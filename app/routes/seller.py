@@ -186,12 +186,12 @@ async def get_seller_properties(
                 bookings_by_property[prop_id].append(booking)
         
         images_by_property = {}
+        cover_photos_by_property = {}
         for doc in images_all or []:
             prop_id = doc.get("entity_id")
             file_type = doc.get("file_type", "")
+            doc_category = doc.get("document_category", "")
             if prop_id and file_type.startswith("image/"):
-                if prop_id not in images_by_property:
-                    images_by_property[prop_id] = []
                 image_url = doc.get("file_path") or doc.get("url")
                 if image_url:
                     # If it's not already a full URL, convert file_path to public URL
@@ -209,7 +209,15 @@ async def get_seller_properties(
                             except:
                                 # Use file_path as-is if conversion fails
                                 pass
-                    images_by_property[prop_id].append(image_url)
+                    
+                    # Check if this is a cover photo
+                    if doc_category == 'cover_photo':
+                        cover_photos_by_property[prop_id] = image_url
+                    else:
+                        # Regular property image
+                        if prop_id not in images_by_property:
+                            images_by_property[prop_id] = []
+                        images_by_property[prop_id].append(image_url)
         
         agents_by_id = {}
         for agent in agents_all or []:
@@ -247,6 +255,11 @@ async def get_seller_properties(
             
             # Get property images from pre-fetched data
             property_images = images_by_property.get(property_id, [])
+            cover_image = cover_photos_by_property.get(property_id) or property_data.get("cover_image")
+            
+            # If cover_image exists, add it to the beginning of images array
+            if cover_image and cover_image not in property_images:
+                property_images = [cover_image] + property_images
             
             enhanced_property = {
                 **property_data,
@@ -257,7 +270,8 @@ async def get_seller_properties(
                 "last_inquiry_date": inquiries[0].get("created_at") if inquiries else None,
                 "last_booking_date": bookings[0].get("created_at") if bookings else None,
                 "assigned_agent": assigned_agent,
-                "images": property_images
+                "images": property_images,
+                "cover_image": cover_image or property_data.get("cover_image")
             }
             
             enhanced_properties.append(enhanced_property)
@@ -320,8 +334,8 @@ async def get_seller_inquiries(
         if status:
             filters["status"] = status
         
-        # Get inquiries with minimal limit and ordering (prioritize speed)
-        inquiries = await db.select("inquiries", filters=filters, limit=min(limit or 20, 30), order_by="created_at", ascending=False)
+        # Get inquiries with limit and ordering - increase limit to get all inquiries
+        inquiries = await db.select("inquiries", filters=filters, limit=min(limit or 1000, 1000), order_by="created_at", ascending=False)
         inquiries_list = inquiries or []
         
         # Early return if no inquiries
