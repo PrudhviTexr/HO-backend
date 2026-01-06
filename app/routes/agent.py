@@ -1111,7 +1111,26 @@ async def get_agent_properties(
                     pass
                 # #endregion
                 
-                images_all = await db.select("documents", filters={"entity_type": "property", "entity_id": {"in": property_ids}})
+                # Query documents individually to avoid UUID serialization issues with "in" filter
+                # The Supabase Python client has issues with UUID arrays in "in" filters
+                images_all = []
+                if property_ids:
+                    # Query in batches to avoid too many individual queries
+                    batch_size = 10
+                    for i in range(0, len(property_ids), batch_size):
+                        batch = property_ids[i:i + batch_size]
+                        batch_tasks = []
+                        for prop_id in batch:
+                            batch_tasks.append(db.select("documents", filters={"entity_type": "property", "entity_id": prop_id}))
+                        try:
+                            batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+                            for result in batch_results:
+                                if isinstance(result, Exception):
+                                    print(f"[AGENT] Error fetching documents batch: {result}")
+                                elif result:
+                                    images_all.extend(result)
+                        except Exception as batch_error:
+                            print(f"[AGENT] Error in documents batch query: {batch_error}")
                 
                 # #region agent log
                 log_entry2 = {

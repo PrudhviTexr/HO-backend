@@ -169,7 +169,29 @@ async def get_seller_properties(
             if property_ids:
                 tasks.append(db.select("inquiries", filters={"property_id": {"in": property_ids}}))
                 tasks.append(db.select("bookings", filters={"property_id": {"in": property_ids}}))
-                tasks.append(db.select("documents", filters={"entity_type": "property", "entity_id": {"in": property_ids}}))
+                # Query documents individually to avoid UUID serialization issues with "in" filter
+                # The Supabase Python client has issues with UUID arrays in "in" filters
+                async def fetch_documents_individually():
+                    all_docs = []
+                    # Query in batches to avoid too many individual queries
+                    batch_size = 10
+                    for i in range(0, len(property_ids), batch_size):
+                        batch = property_ids[i:i + batch_size]
+                        batch_tasks = []
+                        for prop_id in batch:
+                            batch_tasks.append(db.select("documents", filters={"entity_type": "property", "entity_id": prop_id}))
+                        try:
+                            batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+                            for result in batch_results:
+                                if isinstance(result, Exception):
+                                    print(f"[SELLER] Error fetching documents batch: {result}")
+                                elif result:
+                                    all_docs.extend(result)
+                        except Exception as batch_error:
+                            print(f"[SELLER] Error in documents batch query: {batch_error}")
+                    return all_docs
+                documents_task = fetch_documents_individually()
+                tasks.append(documents_task)
             else:
                 # No properties - return empty lists
                 inquiries_all, bookings_all, images_all, agents_all = [], [], [], []
@@ -182,12 +204,22 @@ async def get_seller_properties(
                 # Add timeout to parallel queries
                 results = await asyncio.wait_for(
                     asyncio.gather(*tasks, return_exceptions=True),
-                    timeout=2.0  # 2 second timeout for all parallel queries
+                    timeout=5.0  # Increased timeout for individual document queries
                 )
                 inquiries_all = results[0] if not isinstance(results[0], Exception) else []
                 bookings_all = results[1] if not isinstance(results[1], Exception) else []
                 images_all = results[2] if not isinstance(results[2], Exception) else []
                 agents_all = results[3] if len(results) > 3 and not isinstance(results[3], Exception) else []
+                
+                # Log any exceptions
+                if isinstance(results[0], Exception):
+                    print(f"[SELLER] Error fetching inquiries: {results[0]}")
+                if isinstance(results[1], Exception):
+                    print(f"[SELLER] Error fetching bookings: {results[1]}")
+                if isinstance(results[2], Exception):
+                    print(f"[SELLER] Error fetching documents: {results[2]}")
+                if len(results) > 3 and isinstance(results[3], Exception):
+                    print(f"[SELLER] Error fetching agents: {results[3]}")
                 
                 # #region agent log
                 log_results = {
