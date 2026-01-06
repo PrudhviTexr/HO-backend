@@ -1678,7 +1678,7 @@ async def create_property(request: Request):
             if field in property_data:
                 value = property_data[field]
                 # Convert empty strings to None for numeric fields
-                if value == '' or value == 'NA':
+                if value == '' or value == 'NA' or (isinstance(value, str) and value.strip() == ''):
                     # Special handling for area_sqft (must not be None)
                     if field == 'area_sqft':
                         property_data[field] = 0
@@ -1726,6 +1726,23 @@ async def create_property(request: Request):
                     print(f"[PROPERTIES] ✅ Using fallback custom_id at final check: {property_data['custom_id']}")
             else:
                 print(f"[PROPERTIES] ✅ custom_id is set: {property_data.get('custom_id')}")
+            
+            # FINAL CHECK: Convert all empty strings in integer fields to None before insert
+            # PostgreSQL cannot accept empty strings for integer fields
+            integer_fields = [
+                'bedrooms', 'bathrooms', 'balconies', 'total_floors', 'floor', 'floor_count',
+                'borewells_number', 'total_units', 'units_per_floor', 'total_towers', 
+                'car_parking_slots', 'number_of_floors', 'age', 'available_floor',
+                'parking_slots', 'parking_covered', 'parking_open', 'parking_2_wheeler',
+                'car_parking', 'two_wheeler_parking', 'parking_stilt', 'total_floors_building'
+            ]
+            
+            for field in integer_fields:
+                if field in property_data:
+                    value = property_data[field]
+                    if value == '' or value == 'NA' or (isinstance(value, str) and value.strip() == ''):
+                        property_data[field] = None
+                        print(f"[PROPERTIES] Converted empty string for integer field {field} to None")
             
             print(f"[PROPERTIES] Attempting to insert property into database...")
             print(f"[PROPERTIES] Property ID: {property_id}")
