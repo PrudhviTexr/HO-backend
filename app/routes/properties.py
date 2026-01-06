@@ -8,6 +8,8 @@ import uuid
 import datetime as dt
 import hashlib
 import json
+import asyncio
+import time
 from fastapi import Request
 from pathlib import Path
 
@@ -879,11 +881,25 @@ async def get_properties(
         
         if property_ids_needing_images:
             try:
-                # Fetch all images in one query instead of per-property
-                all_image_docs = await db.select("documents", filters={
-                    "entity_type": "property",
-                    "entity_id": {"in": property_ids_needing_images}
-                })
+                # Query documents individually to avoid UUID serialization issues with "in" filter
+                # The Supabase Python client has issues with UUID arrays in "in" filters
+                all_image_docs = []
+                # Query in batches to avoid too many individual queries
+                batch_size = 10
+                for i in range(0, len(property_ids_needing_images), batch_size):
+                    batch = property_ids_needing_images[i:i + batch_size]
+                    batch_tasks = []
+                    for prop_id in batch:
+                        batch_tasks.append(db.select("documents", filters={"entity_type": "property", "entity_id": prop_id}))
+                    try:
+                        batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+                        for result in batch_results:
+                            if isinstance(result, Exception):
+                                print(f"[PROPERTIES] Error fetching documents batch: {result}")
+                            elif result:
+                                all_image_docs.extend(result)
+                    except Exception as batch_error:
+                        print(f"[PROPERTIES] Error in documents batch query: {batch_error}")
                 
                 # Group images by property_id (separate cover photos from regular images)
                 images_by_property = {}
@@ -894,7 +910,8 @@ async def get_properties(
                     doc_category = doc.get('document_category', '')
                     if prop_id and file_type.startswith('image/'):
                         # Get image URL - convert file_path to public URL if needed
-                        image_url = doc.get('url') or doc.get('file_path')
+                        # Check public_url first, then url, then file_path
+                        image_url = doc.get('public_url') or doc.get('url') or doc.get('file_path')
                         if image_url:
                             # If it's not already a full URL, convert file_path to public URL
                             if not (image_url.startswith('http://') or image_url.startswith('https://')):
@@ -928,9 +945,15 @@ async def get_properties(
                     if not prop.get('images') or len(prop.get('images', [])) == 0:
                         if prop_id in images_by_property:
                             prop['images'] = images_by_property[prop_id]
+                    # If cover_image is not set, use the first available image as fallback (user request)
+                    if not prop.get('cover_image') and prop_id in images_by_property and len(images_by_property[prop_id]) > 0:
+                        prop['cover_image'] = images_by_property[prop_id][0]
                     # Assign cover photo if not already set
                     if not prop.get('cover_photo_url') and prop_id in cover_photos_by_property:
                         prop['cover_photo_url'] = cover_photos_by_property[prop_id]
+                    # If cover_photo_url is not set but we have images, use first image
+                    if not prop.get('cover_photo_url') and prop.get('images') and len(prop.get('images', [])) > 0:
+                        prop['cover_photo_url'] = prop['images'][0]
             except Exception as img_err:
                 print(f"[PROPERTIES] Failed to batch fetch images: {img_err}")
         
@@ -2929,8 +2952,8 @@ async def get_property_images(property_id: str):
             for doc in image_docs:
                 file_type = doc.get('file_type', '')
                 if file_type.startswith('image/'):
-                    # Use 'file_path' if available, otherwise fallback to 'url'
-                    image_url = doc.get('file_path') or doc.get('url')
+                    # Check public_url first, then url, then file_path
+                    image_url = doc.get('public_url') or doc.get('url') or doc.get('file_path')
                     if image_url:
                         # If it's not already a full URL, convert file_path to public URL
                         if not (image_url.startswith('http://') or image_url.startswith('https://')):
