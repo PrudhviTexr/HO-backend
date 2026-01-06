@@ -302,42 +302,42 @@ async def get_seller_properties(
         print(f"[SELLER] Processing {len(images_all or [])} documents for {len(properties_list)} properties")
         print(f"[SELLER] Property IDs: {[p.get('id')[:8] for p in properties_list[:5]]}")
         
-                for doc in images_all or []:
-                    prop_id = doc.get("entity_id")
-                    file_type = doc.get("file_type", "")
-                    doc_category = doc.get("document_category", "")
-                    # #region agent log
-                    if prop_id and file_type.startswith("image/"):
-                        # Log document details for debugging
-                        log_doc = {
-                            "location": "seller.py:216",
-                            "message": "Processing image document",
-                            "data": {
-                                "propertyId": prop_id[:8] if prop_id else "N/A",
-                                "fileType": file_type,
-                                "docCategory": doc_category,
-                                "hasFilePath": bool(doc.get("file_path")),
-                                "hasUrl": bool(doc.get("url")),
-                                "hasPublicUrl": bool(doc.get("public_url")),
-                                "filePath": doc.get("file_path"),
-                                "url": doc.get("url"),
-                                "publicUrl": doc.get("public_url")
-                            },
-                            "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "F"
-                        }
-                        try:
-                            log_path.parent.mkdir(parents=True, exist_ok=True)
-                            with open(log_path, 'a', encoding='utf-8') as f:
-                                f.write(json.dumps(log_doc) + '\n')
-                        except:
-                            pass
-                    # #endregion
-                    if prop_id and file_type.startswith("image/"):
-                        image_url = doc.get("file_path") or doc.get("url") or doc.get("public_url")
-                        if image_url:
+        for doc in images_all or []:
+            prop_id = doc.get("entity_id")
+            file_type = doc.get("file_type", "")
+            doc_category = doc.get("document_category", "")
+            # #region agent log
+            if prop_id and file_type.startswith("image/"):
+                # Log document details for debugging
+                log_doc = {
+                    "location": "seller.py:216",
+                    "message": "Processing image document",
+                    "data": {
+                        "propertyId": prop_id[:8] if prop_id else "N/A",
+                        "fileType": file_type,
+                        "docCategory": doc_category,
+                        "hasFilePath": bool(doc.get("file_path")),
+                        "hasUrl": bool(doc.get("url")),
+                        "hasPublicUrl": bool(doc.get("public_url")),
+                        "filePath": doc.get("file_path"),
+                        "url": doc.get("url"),
+                        "publicUrl": doc.get("public_url")
+                    },
+                    "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "F"
+                }
+                try:
+                    log_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(log_path, 'a', encoding='utf-8') as f:
+                        f.write(json.dumps(log_doc) + '\n')
+                except:
+                    pass
+            # #endregion
+            if prop_id and file_type.startswith("image/"):
+                image_url = doc.get("file_path") or doc.get("url") or doc.get("public_url")
+                if image_url:
                     # If it's not already a full URL, convert file_path to public URL
                     if not (image_url.startswith('http://') or image_url.startswith('https://')):
                         original_path = image_url
