@@ -68,9 +68,6 @@ class Settings:
     
     # Google Maps API Configuration
     GOOGLE_MAPS_API_KEY: str = os.getenv("GOOGLE_MAPS_API_KEY", "")
-    
-    # Support Email Configuration
-    SUPPORT_EMAIL: str = os.getenv("SUPPORT_EMAIL", "support@homeandown.com")
 
 # Global settings instance
 settings = Settings()

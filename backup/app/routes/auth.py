@@ -31,19 +31,25 @@ async def test_auth_route():
 @router.post("/signup")
 async def signup(payload: SignupRequest, request: Request) -> Dict[str, Any]:
     try:
+        print(f"\n[AUTH] Signup request for: {payload.email}")
+        print(f"[AUTH] User details: {payload.first_name} {payload.last_name}")
+        print(f"[AUTH] Role: {payload.role}")
+        
         # Check if user already exists
         try:
             existing_users: List[Dict[str, Any]] = await db.select("users", filters={"email": payload.email.lower()})
             if existing_users:
+                print(f"[AUTH] User already exists: {payload.email}")
                 return {
                     "success": False,
                     "error": "User with this email already exists. Please sign in instead."
                 }
         except Exception as db_error:
-            pass
+            print(f"[AUTH] Error checking existing user: {db_error}")
         
         # Generate user ID
         user_id = str(uuid.uuid4())
+        print(f"[AUTH] Generated user ID: {user_id}")
         
         # TEMPORARY STORAGE: Store signup data in memory, don't save to DB yet
         # Data will be saved to DB only after OTP verification
@@ -122,15 +128,21 @@ async def signup(payload: SignupRequest, request: Request) -> Dict[str, Any]:
                     # Try to set license_number, but don't fail if column doesn't exist
                     try:
                         user_data["license_number"] = custom_id
+                        print(f"[AUTH] Generated license number for agent: {custom_id}")
                     except Exception as license_error:
+                        print(f"[AUTH] License number field not available: {license_error}")
                         # Store in agent_license_number as fallback
                         user_data["agent_license_number"] = custom_id
+                        print(f"[AUTH] Stored license number in agent_license_number: {custom_id}")
+                else:
+                    print(f"[AUTH] Generated custom ID: {custom_id}")
             except Exception as cid_error:
-                pass
+                print(f"[AUTH] Custom ID generation failed: {cid_error}")
         
         # Create user in database IMMEDIATELY
         try:
             user_result = await db.insert("users", user_data)
+            print(f"[AUTH] User created in database successfully")
             
             # Handle list response from db.insert
             if isinstance(user_result, list) and len(user_result) > 0:
@@ -144,8 +156,9 @@ async def signup(payload: SignupRequest, request: Request) -> Dict[str, Any]:
             try:
                 from ..services.user_role_service import UserRoleService
                 await UserRoleService.initialize_user_roles(user_id, payload.role)
+                print(f"[AUTH] User roles initialized successfully")
             except Exception as role_error:
-                pass
+                print(f"[AUTH] Failed to initialize user roles: {role_error}")
             
             # Create agent profile if user is an agent
             if payload.role == "agent" and agent_profile_data:
@@ -160,11 +173,13 @@ async def signup(payload: SignupRequest, request: Request) -> Dict[str, Any]:
                         "updated_at": now_utc
                     }
                     await db.insert("agent_profiles", agent_profile_insert)
+                    print(f"[AUTH] Agent profile created for user: {user_id}")
                 except Exception as agent_profile_error:
+                    print(f"[AUTH] Failed to create agent profile: {agent_profile_error}")
                     # Don't fail signup if agent profile creation fails - it can be created later
-                    pass
                 
         except Exception as create_error:
+            print(f"[AUTH] User creation failed: {create_error}")
             return {
                 "success": False,
                 "error": f"Failed to create user account: {str(create_error)}"
@@ -180,18 +195,21 @@ async def signup(payload: SignupRequest, request: Request) -> Dict[str, Any]:
                 "updated_at": now_utc
             }
             await db.insert("user_approvals", approval_data)
+            print(f"[AUTH] User approval record created for {payload.role}: {user_id}")
         except Exception as approval_err:
-            pass
+            print(f"[AUTH] Failed to create approval record: {approval_err}")
         
         # Admin notifications are handled by admin dashboard
+        print(f"[AUTH] User registration complete for {payload.email}")
         
         # Send OTP email automatically during signup
         try:
             from ..services.otp_service import send_email_otp
             otp_token = await send_email_otp(payload.email.lower(), "email_verification")
+            print(f"[AUTH] OTP sent to {payload.email.lower()} during signup")
         except Exception as otp_error:
+            print(f"[AUTH] Failed to send OTP during signup: {otp_error}")
             # Don't fail signup if OTP sending fails - user can request OTP again
-            pass
         
         # Return success with user ID
         return {
@@ -206,6 +224,9 @@ async def signup(payload: SignupRequest, request: Request) -> Dict[str, Any]:
         }
         
     except Exception as e:
+        print(f"[AUTH] Signup error: {e}")
+        print(f"[AUTH] Full traceback:")
+        print(traceback.format_exc())
         return {
             "success": False,
             "error": f"Signup failed: {str(e)}"
@@ -216,6 +237,17 @@ async def signup(payload: SignupRequest, request: Request) -> Dict[str, Any]:
 async def login(payload: LoginRequest, response: Response, role: Optional[str] = None) -> Dict[str, Any]:
     """Authenticates a user and issues an access token and refresh token cookie."""
     try:
+        print(f"\n[AUTH] Login attempt for: {payload.email} (requested role: {role})")
+        # #region agent log
+        try:
+            from pathlib import Path
+            log_path = Path(__file__).resolve().parent.parent.parent.parent / '.cursor' / 'debug.log'
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(log_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps({"id":f"log_auth_login_req_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"auth.py:240","message":"Login request received","data":{"email":payload.email.lower(),"has_password":bool(payload.password),"password_length":len(payload.password) if payload.password else 0,"role":role,"hypothesisId":"A"},"sessionId":"debug-session","runId":"run1"}) + '\n')
+        except: pass
+        # #endregion
+        
         try:
             # Add timeout to prevent hanging on slow database
             import asyncio
@@ -223,11 +255,42 @@ async def login(payload: LoginRequest, response: Response, role: Optional[str] =
                 db.select("users", filters={"email": payload.email.lower()}, limit=1),
                 timeout=1.5  # Reduced to 1.5 seconds for faster failure
             )
+            # #region agent log
+            try:
+                from pathlib import Path
+                log_path = Path(__file__).resolve().parent.parent.parent.parent / '.cursor' / 'debug.log'
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(log_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({"id":f"log_auth_db_query_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"auth.py:247","message":"Database query completed","data":{"email":payload.email.lower(),"users_found":len(users) if users else 0,"hypothesisId":"B"},"sessionId":"debug-session","runId":"run1"}) + '\n')
+            except: pass
+            # #endregion
             if not users:
+                print(f"[AUTH] No user found with email: {payload.email.lower()}")
+                # #region agent log
+                try:
+                    from pathlib import Path
+                    log_path = Path(__file__).resolve().parent.parent.parent.parent / '.cursor' / 'debug.log'
+                    log_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(log_path, 'a', encoding='utf-8') as f:
+                        f.write(json.dumps({"id":f"log_auth_user_not_found_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"auth.py:251","message":"User not found in database","data":{"email":payload.email.lower(),"hypothesisId":"B"},"sessionId":"debug-session","runId":"run1"}) + '\n')
+                except: pass
+                # #endregion
                 raise HTTPException(status_code=401, detail="Invalid email or password")
             
             user: Dict[str, Any] = users[0]
+            print(f"[AUTH] User found: {user.get('email')}, id: {user.get('id')}, status: {user.get('status')}, verification_status: {user.get('verification_status')}")
             password_hash_field = user.get('password_hash') or user.get('hashed_password')
+            print(f"[AUTH] User has password_hash: {bool(password_hash_field)}, hash length: {len(password_hash_field) if password_hash_field else 0}")
+            print(f"[AUTH] User fields available: {list(user.keys())}")
+            # #region agent log
+            try:
+                from pathlib import Path
+                log_path = Path(__file__).resolve().parent.parent.parent.parent / '.cursor' / 'debug.log'
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(log_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({"id":f"log_auth_user_found_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"auth.py:254","message":"User found in database","data":{"user_id":user.get('id'),"email":user.get('email'),"has_password_hash":bool(password_hash_field),"has_password_hash_field":bool(user.get('password_hash')),"has_hashed_password_field":bool(user.get('hashed_password')),"user_fields":list(user.keys())[:10],"hypothesisId":"C"},"sessionId":"debug-session","runId":"run1"}) + '\n')
+            except: pass
+            # #endregion
         except asyncio.TimeoutError:
             raise HTTPException(status_code=504, detail="Database timeout - please try again")
         except HTTPException:
@@ -238,11 +301,23 @@ async def login(payload: LoginRequest, response: Response, role: Optional[str] =
         # Check if password_hash exists (try both field names for backward compatibility)
         password_hash = user.get("password_hash") or user.get("hashed_password")
         if not password_hash:
+            print(f"[AUTH] User {payload.email} has no password_hash in database")
+            print(f"[AUTH] Available user fields: {list(user.keys())}")
+            # #region agent log
+            try:
+                from pathlib import Path
+                log_path = Path(__file__).resolve().parent.parent.parent.parent / '.cursor' / 'debug.log'
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(log_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({"id":f"log_auth_no_password_hash_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"auth.py:304","message":"Password hash missing","data":{"user_id":user.get('id'),"email":user.get('email'),"user_fields":list(user.keys()),"hypothesisId":"C"},"sessionId":"debug-session","runId":"run1"}) + '\n')
+            except: pass
+            # #endregion
             raise HTTPException(status_code=401, detail="Invalid email or password")
         
         # Trim password to handle whitespace issues
         password = payload.password.strip() if payload.password else ""
         if not password:
+            print(f"[AUTH] Empty password provided for: {payload.email}")
             raise HTTPException(status_code=401, detail="Invalid email or password")
         
         # Trim password_hash in case it has whitespace
@@ -251,21 +326,79 @@ async def login(payload: LoginRequest, response: Response, role: Optional[str] =
         # Ensure password doesn't exceed bcrypt's 72-byte limit
         # Convert to bytes to check length, then truncate if needed
         password_bytes = password.encode('utf-8')
+        password_bytes_len_before = len(password_bytes)
         if len(password_bytes) > 72:
+            print(f"[AUTH] Password exceeds 72 bytes ({len(password_bytes)} bytes), truncating to 72 bytes")
             password_bytes = password_bytes[:72]
             password = password_bytes.decode('utf-8', errors='ignore')
+        password_bytes_len_after = len(password.encode('utf-8'))
+        
+        # #region agent log
+        try:
+            from pathlib import Path
+            log_path = Path(__file__).resolve().parent.parent.parent.parent / '.cursor' / 'debug.log'
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(log_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps({"id":f"log_auth_password_truncation_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"auth.py:332","message":"Password truncation check","data":{"email":payload.email,"password_str_length":len(password),"password_bytes_before":password_bytes_len_before,"password_bytes_after":password_bytes_len_after,"was_truncated":password_bytes_len_before > 72,"hypothesisId":"D"},"sessionId":"debug-session","runId":"run1"}) + '\n')
+        except: pass
+        # #endregion
         
         try:
+            # #region agent log
+            try:
+                from pathlib import Path
+                log_path = Path(__file__).resolve().parent.parent.parent.parent / '.cursor' / 'debug.log'
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(log_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({"id":f"log_auth_before_verify_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"auth.py:344","message":"Before password verification","data":{"email":payload.email,"password_length":len(password),"password_bytes_length":len(password.encode('utf-8')),"password_hash_length":len(password_hash) if password_hash else 0,"password_hash_prefix":password_hash[:20] if password_hash and len(password_hash) > 20 else "","hypothesisId":"D"},"sessionId":"debug-session","runId":"run1"}) + '\n')
+            except: pass
+            # #endregion
             if not verify_password(password, password_hash):
+                print(f"[AUTH] Invalid password for: {payload.email}")
+                print(f"[AUTH] Password hash exists: {bool(password_hash)}, hash length: {len(password_hash) if password_hash else 0}")
+                print(f"[AUTH] Password hash starts with: {password_hash[:20] if password_hash and len(password_hash) > 20 else password_hash}")
+                # #region agent log
+                try:
+                    from pathlib import Path
+                    log_path = Path(__file__).resolve().parent.parent.parent.parent / '.cursor' / 'debug.log'
+                    log_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(log_path, 'a', encoding='utf-8') as f:
+                        f.write(json.dumps({"id":f"log_auth_password_mismatch_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"auth.py:285","message":"Password verification failed","data":{"email":payload.email,"hypothesisId":"D"},"sessionId":"debug-session","runId":"run1"}) + '\n')
+                except: pass
+                # #endregion
                 raise HTTPException(status_code=401, detail="Invalid email or password")
+            # #region agent log
+            try:
+                from pathlib import Path
+                log_path = Path(__file__).resolve().parent.parent.parent.parent / '.cursor' / 'debug.log'
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(log_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({"id":f"log_auth_password_verified_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"auth.py:287","message":"Password verified successfully","data":{"email":payload.email,"hypothesisId":"D"},"sessionId":"debug-session","runId":"run1"}) + '\n')
+            except: pass
+            # #endregion
         except HTTPException:
             raise
         except Exception as pwd_error:
+            print(f"[AUTH] Password verification error: {pwd_error}")
+            print(f"[AUTH] Error type: {type(pwd_error).__name__}")
+            print(f"[AUTH] Error details: {str(pwd_error)}")
+            import traceback
+            print(f"[AUTH] Traceback: {traceback.format_exc()}")
+            # #region agent log
+            try:
+                from pathlib import Path
+                log_path = Path(__file__).resolve().parent.parent.parent.parent / '.cursor' / 'debug.log'
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(log_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({"id":f"log_auth_password_error_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"auth.py:295","message":"Password verification exception","data":{"email":payload.email,"error_type":type(pwd_error).__name__,"error_message":str(pwd_error)[:200],"hypothesisId":"D"},"sessionId":"debug-session","runId":"run1"}) + '\n')
+            except: pass
+            # #endregion
             raise HTTPException(status_code=401, detail="Authentication failed")
         
         # Validate user role if specified
         user_type = user.get("user_type", "buyer")
         if role and role.lower() != user_type.lower():
+            print(f"[AUTH] Role mismatch: user registered as {user_type}, but trying to login as {role}")
             raise HTTPException(
                 status_code=403, 
                 detail=f"You are registered as a {user_type.title()}. Please select the correct role to sign in."
@@ -277,7 +410,10 @@ async def login(payload: LoginRequest, response: Response, role: Optional[str] =
         user_status = user.get("status", "pending")
         verification_status = user.get("verification_status", "pending")
         
+        print(f"[AUTH] User status check: status={user_status}, verification_status={verification_status}")
+        
         if user_status != "active":
+            print(f"[AUTH] User not approved by admin: {payload.email} (status: {user_status})")
             # Provide a more specific message for suspended accounts
             if user_status == 'suspended':
                 detail = "Your account has been suspended. Please contact support."
@@ -290,6 +426,7 @@ async def login(payload: LoginRequest, response: Response, role: Optional[str] =
         
         # For agents, also check verification_status
         if user_type == 'agent' and verification_status not in ['verified', 'active']:
+            print(f"[AUTH] Agent not verified: {payload.email} (verification_status: {verification_status})")
             raise HTTPException(
                 status_code=403,
                 detail="Your agent account verification is still pending. Please wait for admin approval."
@@ -298,7 +435,10 @@ async def login(payload: LoginRequest, response: Response, role: Optional[str] =
         # Allow any verified user to sign in (regardless of user type)
         # Admin approval is the primary requirement
         
-
+        print(f"[AUTH] User verified and allowed to sign in: {user['email']} (type: {user.get('user_type', 'buyer')})")
+        
+        print(f"[AUTH] Login successful for: {user['email']}")
+        
         try:
             user_id = str(user["id"])
             user_type = str(user.get("user_type", "buyer"))
@@ -307,21 +447,53 @@ async def login(payload: LoginRequest, response: Response, role: Optional[str] =
             try:
                 from ..services.user_role_service import UserRoleService
                 active_roles = await UserRoleService.get_active_user_roles(user_id)
-
+                print(f"[AUTH] User {user_id} has active roles: {active_roles}")
             except Exception as role_error:
-
+                print(f"[AUTH] Failed to get user roles: {role_error}")
                 active_roles = [user_type]  # Fallback to primary role
             
-            
+            # #region agent log
+            try:
+                from pathlib import Path
+                log_path = Path(__file__).resolve().parent.parent.parent.parent / '.cursor' / 'debug.log'
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(log_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({"id":f"log_auth_before_token_gen_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"auth.py:455","message":"Before token generation","data":{"user_id":user_id,"user_type":user_type,"hypothesisId":"F"},"sessionId":"debug-session","runId":"run1"}) + '\n')
+            except: pass
+            # #endregion
             
             auth_token = issue_user_token(user_id, user_type)
-            
+            # #region agent log
+            try:
+                from pathlib import Path
+                log_path = Path(__file__).resolve().parent.parent.parent.parent / '.cursor' / 'debug.log'
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(log_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({"id":f"log_auth_auth_token_gen_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"auth.py:456","message":"Auth token generated","data":{"token_length":len(auth_token) if auth_token else 0,"hypothesisId":"F"},"sessionId":"debug-session","runId":"run1"}) + '\n')
+            except: pass
+            # #endregion
 
             refresh_raw = generate_refresh_token()
-            
+            # #region agent log
+            try:
+                from pathlib import Path
+                log_path = Path(__file__).resolve().parent.parent.parent.parent / '.cursor' / 'debug.log'
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(log_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({"id":f"log_auth_refresh_token_gen_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"auth.py:458","message":"Refresh token generated","data":{"token_length":len(refresh_raw) if refresh_raw else 0,"hypothesisId":"F"},"sessionId":"debug-session","runId":"run1"}) + '\n')
+            except: pass
+            # #endregion
             
             refresh_hash = hash_refresh_token(refresh_raw)
-            
+            # #region agent log
+            try:
+                from pathlib import Path
+                log_path = Path(__file__).resolve().parent.parent.parent.parent / '.cursor' / 'debug.log'
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(log_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({"id":f"log_auth_refresh_hash_gen_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"auth.py:459","message":"Refresh token hash generated","data":{"hash_length":len(refresh_hash) if refresh_hash else 0,"hypothesisId":"F"},"sessionId":"debug-session","runId":"run1"}) + '\n')
+            except: pass
+            # #endregion
 
             # Use a safe default if the setting is missing or falsy
             refresh_expires_days = int(getattr(settings, 'JWT_REFRESH_EXPIRATION_DAYS', 30) or 30)
@@ -335,6 +507,7 @@ async def login(payload: LoginRequest, response: Response, role: Optional[str] =
             try:
                 await db.insert("refresh_tokens", refresh_record)
             except Exception as e:
+                print(f"[AUTH] Failed to store refresh token: {e}")
 
             response.set_cookie(
                 "refresh_token",
@@ -373,16 +546,27 @@ async def login(payload: LoginRequest, response: Response, role: Optional[str] =
                 "message": "Login successful"
             }
         except Exception as token_error:
-
+            print(f"[AUTH] Token generation error: {token_error}")
+            print(f"[AUTH] Token generation error type: {type(token_error).__name__}")
             import traceback
-            
+            print(f"[AUTH] Token generation traceback: {traceback.format_exc()}")
+            # #region agent log
+            try:
+                from pathlib import Path
+                log_path = Path(__file__).resolve().parent.parent.parent.parent / '.cursor' / 'debug.log'
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(log_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({"id":f"log_auth_token_error_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"auth.py:511","message":"Token generation exception","data":{"error_type":type(token_error).__name__,"error_message":str(token_error)[:200],"hypothesisId":"F"},"sessionId":"debug-session","runId":"run1"}) + '\n')
+            except: pass
+            # #endregion
             raise HTTPException(status_code=500, detail="Failed to generate authentication tokens")
         
     except HTTPException:
         raise
     except Exception as e:
-
-
+        print(f"[AUTH] Login error: {e}")
+        print(f"[AUTH] Full traceback:")
+        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
 
 @router.get("/me")
@@ -423,7 +607,7 @@ async def get_profile(request: Request) -> Dict[str, Any]:
             )
         except asyncio.TimeoutError:
             # If database is slow, return cached profile if available, otherwise error
-
+            print(f"[AUTH] Database timeout for user {user_id}")
             # Try to return basic info from JWT token if database is unavailable
             return {
                 "id": user_id,
@@ -442,7 +626,7 @@ async def get_profile(request: Request) -> Dict[str, Any]:
             error_msg = str(db_error)
             # Check for database connection errors
             if "getaddrinfo failed" in error_msg or "11001" in error_msg:
-
+                print(f"[AUTH] Database connection error for user {user_id}: {error_msg}")
                 # Return basic info from JWT token if database is unavailable
                 return {
                     "id": user_id,
@@ -461,7 +645,7 @@ async def get_profile(request: Request) -> Dict[str, Any]:
         
         if not users or len(users) == 0:
             # User not found in database, but JWT is valid - return basic info from JWT
-
+            print(f"[AUTH] User {user_id} not found in database, but JWT is valid - returning basic info")
             return {
                 "id": user_id,
                 "email": user_claims.get("email", ""),
@@ -498,6 +682,7 @@ async def get_profile(request: Request) -> Dict[str, Any]:
                     experience_years = agent_profile.get("experience_years")
                     specialization = agent_profile.get("specialization")
             except (asyncio.TimeoutError, Exception) as agent_profile_error:
+                print(f"[AUTH] Failed to fetch agent profile (non-critical): {agent_profile_error}")
                 # Continue without agent profile data - don't fail the request
         
         # Build response with ALL fields from the database
@@ -556,8 +741,9 @@ async def get_profile(request: Request) -> Dict[str, Any]:
     except HTTPException:
         raise
     except Exception as e:
-
-
+        print(f"[AUTH] Get profile error: {e}")
+        print(f"[AUTH] Full traceback:")
+        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Failed to get profile: {str(e)}")
 
 
@@ -565,14 +751,17 @@ async def get_profile(request: Request) -> Dict[str, Any]:
 async def update_profile(request: Request, updates: UpdateProfileRequest) -> Dict[str, Any]:
     """Update user profile fields including profile_image_url."""
     try:
-
+        print("[AUTH] Update profile request received")
+        
         # Get user claims from JWT token
         user_claims = get_current_user_claims(request)
         user_id = user_claims.get("sub")
         
         if not user_id:
             raise HTTPException(status_code=401, detail="Authentication required")
-
+        
+        print(f"[AUTH] Updating profile for user: {user_id}")
+        
         # Build update dict from provided fields
         update_data = {}
         if updates.first_name is not None:
@@ -599,7 +788,9 @@ async def update_profile(request: Request, updates: UpdateProfileRequest) -> Dic
         
         # Update user in database
         result = await db.update("users", {"id": user_id}, update_data)
-
+        
+        print(f"[AUTH] Profile updated successfully for user: {user_id}")
+        
         # Return updated user
         user_data = await db.select("users", filters={"id": user_id})
         if user_data:
@@ -610,7 +801,8 @@ async def update_profile(request: Request, updates: UpdateProfileRequest) -> Dic
     except HTTPException:
         raise
     except Exception as e:
-
+        print(f"[AUTH] Update profile error: {e}")
+        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Failed to update profile: {str(e)}")
 
 
@@ -618,7 +810,8 @@ async def update_profile(request: Request, updates: UpdateProfileRequest) -> Dic
 async def send_otp(payload: SendOTPRequest) -> Dict[str, Any]:
     """Send OTP via email for email verification."""
     try:
-
+        print(f"[OTP] Send OTP request: {payload.email} for {payload.action}")
+        
         from ..services.otp_service import send_email_otp
         token = await send_email_otp(payload.email, payload.action)
         
@@ -626,38 +819,41 @@ async def send_otp(payload: SendOTPRequest) -> Dict[str, Any]:
         return {"success": True, "sent": True, "otp": token}
         
     except Exception as e:
-
+        print(f"[OTP] Send OTP error: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to send OTP: {str(e)}")
 
 @router.post("/verify-otp")
 async def verify_otp(payload: VerifyOTPRequest) -> Dict[str, Any]:
     """Verify OTP for email verification."""
     try:
-
+        print(f"[OTP] Verify OTP: {payload.email} for {payload.action}")
+        
         from ..services.otp_service import verify_email_otp
         is_valid = verify_email_otp(payload.email, payload.otp, payload.action)
         
         if not is_valid:
-
+            print(f"[OTP] Invalid OTP provided for {payload.email}")
             raise HTTPException(status_code=400, detail="Invalid or expired OTP")
-
+            
+        print(f"[OTP] OTP verified successfully for {payload.email}")
         return {"success": True}
         
     except HTTPException:
         raise
     except Exception as e:
-
+        print(f"[OTP] Verify OTP error: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to verify OTP: {str(e)}")
 
 @router.get("/verify-email/{token}")
 async def verify_email(token: str) -> Dict[str, Any]:
     """Verify email using token from email link."""
     try:
+        print(f"[AUTH] Email verification attempt for token: {token}")
 
         # Find token in database
         tokens = await db.select("email_verification_tokens", filters={"token": token})
         if not tokens:
-
+            print(f"[AUTH] Token not found. This may be because it's already used or invalid.")
             raise HTTPException(status_code=400, detail="Invalid or expired verification token")
 
         token_record = tokens[0]
@@ -665,7 +861,7 @@ async def verify_email(token: str) -> Dict[str, Any]:
         expires_at_str = token_record.get("expires_at")
         
         if not expires_at_str:
-
+            print(f"[AUTH] Token record missing expiration date.")
             raise HTTPException(status_code=400, detail="Invalid token format")
 
         # Check if token is expired
@@ -673,26 +869,27 @@ async def verify_email(token: str) -> Dict[str, Any]:
             expires_at = dt.datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
             now_utc = dt.datetime.now(dt.timezone.utc)
             if now_utc > expires_at:
-
+                print(f"[AUTH] Token expired at {expires_at}. Current time is {now_utc}.")
                 raise HTTPException(status_code=400, detail="Verification token has expired")
         except Exception as parse_error:
-
+            print(f"[AUTH] Error parsing token expiration: {parse_error}")
             raise HTTPException(status_code=400, detail="Invalid token format")
         
         if not user_id:
-
+            print(f"[AUTH] Token record has no associated user_id.")
             raise HTTPException(status_code=400, detail="Invalid token format")
 
         # Find user
         users = await db.select("users", filters={"id": user_id})
         if not users:
-
+            print(f"[AUTH] User associated with token not found: {user_id}")
             raise HTTPException(status_code=404, detail="User not found")
         
         user = users[0]
         
         # Check if already verified
         if user.get("email_verified", False):
+            print(f"[AUTH] User's email is already verified: {user.get('email')}")
             return {
                 "success": True,
                 "message": "Email is already verified",
@@ -708,7 +905,7 @@ async def verify_email(token: str) -> Dict[str, Any]:
             }
             await db.update("users", update_data, {"id": user_id})
         except Exception as update_error:
-
+            print(f"[AUTH] Failed to update user record for {user_id}.")
             raise HTTPException(status_code=500, detail="Failed to verify email")
         
         # Log verification event
@@ -722,13 +919,15 @@ async def verify_email(token: str) -> Dict[str, Any]:
             }
             await db.insert("user_activity_logs", log_data)
         except Exception as log_err:
+            print(f"[AUTH] Failed to log verification event: {log_err}")
 
         # Delete the used token
         try:
             await db.delete("email_verification_tokens", {"token": token})
         except Exception as e:
-
-
+            print(f"[AUTH] Failed to delete token after verification: {e}")
+        
+        print(f"[AUTH] Email verified for user_id: {user_id}")
         return {
             "success": True,
             "message": "Email verified successfully! You can now sign in to your account.",
@@ -743,8 +942,9 @@ async def verify_email(token: str) -> Dict[str, Any]:
     except HTTPException:
         raise
     except Exception as e:
-
-
+        print(f"[AUTH] Email verification error: {e}")
+        print(f"[AUTH] Full traceback:")
+        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Email verification failed: {str(e)}")
 
 @router.post("/verify-email-otp")
@@ -753,7 +953,9 @@ async def verify_email_otp(payload: Dict[str, Any]) -> Dict[str, Any]:
     try:
         email = payload.get("email", "").lower()
         otp = payload.get("otp", "")
-
+        
+        print(f"[AUTH] Verifying email OTP for: {email}")
+        
         # Validate OTP format
         if len(otp) != 6 or not otp.isdigit():
             raise HTTPException(status_code=400, detail="Invalid OTP format")
@@ -768,7 +970,7 @@ async def verify_email_otp(payload: Dict[str, Any]) -> Dict[str, Any]:
         
         # Check if already verified
         if user.get("email_verified", False):
-
+            print(f"[AUTH] User's email is already verified: {email}")
             return {
                 "success": True,
                 "message": "Email is already verified",
@@ -781,13 +983,13 @@ async def verify_email_otp(payload: Dict[str, Any]) -> Dict[str, Any]:
             is_valid = verify_otp_service(email, otp, "email_verification")
             
             if not is_valid:
-
+                print(f"[AUTH] Invalid OTP provided for {email}")
                 raise HTTPException(status_code=400, detail="Invalid or expired OTP")
                 
         except HTTPException:
             raise
         except Exception as otp_error:
-
+            print(f"[AUTH] OTP verification error: {otp_error}")
             raise HTTPException(status_code=400, detail="Invalid or expired OTP")
         
         # Update user as verified
@@ -799,7 +1001,7 @@ async def verify_email_otp(payload: Dict[str, Any]) -> Dict[str, Any]:
             }
             await db.update("users", update_data, {"id": user_id})
         except Exception as update_error:
-
+            print(f"[AUTH] Failed to update user record for {user_id}.")
             raise HTTPException(status_code=500, detail="Failed to verify email")
         
         # Log verification event
@@ -813,8 +1015,9 @@ async def verify_email_otp(payload: Dict[str, Any]) -> Dict[str, Any]:
             }
             await db.insert("user_activity_logs", log_data)
         except Exception as log_err:
-
-
+            print(f"[AUTH] Failed to log verification event: {log_err}")
+        
+        print(f"[AUTH] Email verified via OTP for user_id: {user_id}")
         return {
             "success": True,
             "message": "Email verified successfully! You can now sign in to your account.",
@@ -829,8 +1032,9 @@ async def verify_email_otp(payload: Dict[str, Any]) -> Dict[str, Any]:
     except HTTPException:
         raise
     except Exception as e:
-
-
+        print(f"[AUTH] Email OTP verification error: {e}")
+        print(f"[AUTH] Full traceback:")
+        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Email verification failed: {str(e)}")
 
 @router.get("/admin/tokens")
@@ -840,7 +1044,7 @@ async def list_tokens() -> Dict[str, Any]:
         tokens = await db.select("email_verification_tokens")
         return {"success": True, "tokens": tokens}
     except Exception as e:
-
+        print(f"[ADMIN] Failed to list tokens: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to list tokens: {str(e)}")
 
 @router.post("/resend-verification")
@@ -854,7 +1058,9 @@ async def resend_verification_email(request: Request) -> Dict[str, Any]:
                 "success": False,
                 "error": "Email parameter is required"
             }
-
+        
+        print(f"[AUTH] Resending verification email to: {email}")
+        
         # Check if user exists
         users = await db.select("users", filters={"email": email.lower()})
         if not users:
@@ -876,20 +1082,21 @@ async def resend_verification_email(request: Request) -> Dict[str, Any]:
         try:
             from ..services.otp_service import send_email_otp
             otp_token = await send_email_otp(email, "email_verification")
-
+            print(f"[AUTH] Verification email OTP sent: {otp_token}")
+            
             return {
                 "success": True,
                 "message": "Verification email sent successfully! Please check your inbox."
             }
         except Exception as otp_error:
-
+            print(f"[AUTH] Email OTP send failed: {otp_error}")
             return {
                 "success": False,
                 "error": "Failed to send verification email. Please try again."
             }
         
     except Exception as e:
-
+        print(f"[AUTH] Resend verification error: {e}")
         return {
             "success": False,
             "error": f"Failed to resend verification email: {str(e)}"
@@ -972,7 +1179,7 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
             active_roles = await UserRoleService.get_active_user_roles(user_id)
             role_info = await UserRoleService.get_user_role_info(user_id)
         except Exception as role_error:
-
+            print(f"[AUTH] Failed to get user roles: {role_error}")
             active_roles = [user.get("user_type", "buyer")]
             role_info = {
                 "active_roles": active_roles,
@@ -1001,7 +1208,7 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
     except HTTPException:
         raise
     except Exception as e:
-
+        print(f"[AUTH] Get current user error: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get user information: {str(e)}")
 
 
@@ -1066,6 +1273,7 @@ async def request_additional_role(request: Request) -> Dict[str, Any]:
             if profile_updates:
                 profile_updates["updated_at"] = dt.datetime.utcnow().isoformat()
                 await db.update("users", profile_updates, {"id": user_id})
+                print(f"[AUTH] Updated user profile during role request: {list(profile_updates.keys())}")
             
             # Add the role as pending (requires admin approval)
             success = await UserRoleService.add_additional_role(user_id, requested_role)
@@ -1149,9 +1357,12 @@ async def request_additional_role(request: Request) -> Dict[str, Any]:
                         html=user_email_html
                     )
                     if email_result.get("status") == "sent":
+                        print(f"[AUTH] Role request confirmation email sent to user: {user['email']} via {email_result.get('provider', 'unknown')}")
                     else:
+                        print(f"[AUTH] Role request confirmation email may have failed for user {user['email']}: {email_result.get('error', 'Unknown error')}")
                 except Exception as email_error:
-
+                    print(f"[AUTH] Failed to send role request email to user: {email_error}")
+                
                 # Send notification to admins
                 try:
                     admin_users = await db.select("users", filters={"user_type": "admin"})
@@ -1191,7 +1402,7 @@ async def request_additional_role(request: Request) -> Dict[str, Any]:
                                 </div>
                                 
                                 <div style="text-align: center; margin: 40px 0;">
-                                    <a href="{settings.SITE_URL}/admin/dashboard" 
+                                    <a href="https://homeandown.com/admin/dashboard" 
                                        style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); 
                                               color: white; padding: 16px 40px; text-decoration: none; border-radius: 8px; 
                                               font-weight: 600; font-size: 16px; box-shadow: 0 4px 6px rgba(37, 99, 235, 0.3);">
@@ -1221,11 +1432,15 @@ async def request_additional_role(request: Request) -> Dict[str, Any]:
                                 html=admin_email_html
                             )
                             if email_result.get("status") == "sent":
+                                print(f"[AUTH] Role request notification sent to admin: {admin['email']} via {email_result.get('provider', 'unknown')}")
                             else:
+                                print(f"[AUTH] Role request notification may have failed for admin {admin['email']}: {email_result.get('error', 'Unknown error')}")
                         except Exception as admin_email_error:
-
+                            print(f"[AUTH] Failed to send admin notification: {admin_email_error}")
+                            
                 except Exception as admin_notify_error:
-
+                    print(f"[AUTH] Failed to send admin notifications: {admin_notify_error}")
+                
                 return {
                     "success": True,
                     "message": f"Role request submitted successfully. Admin approval required for {requested_role} role."
@@ -1237,8 +1452,9 @@ async def request_additional_role(request: Request) -> Dict[str, Any]:
                 }
                 
         except Exception as role_error:
-
+            print(f"[AUTH] Role request error: {role_error}")
             import traceback
+            print(traceback.format_exc())
             return {
                 "success": False,
                 "error": f"Failed to submit role request: {str(role_error)}"
@@ -1247,14 +1463,15 @@ async def request_additional_role(request: Request) -> Dict[str, Any]:
     except HTTPException:
         raise
     except Exception as e:
-
+        print(f"[AUTH] Request role error: {e}")
         import traceback
+        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Failed to submit role request: {str(e)}")
 
 
 @router.post("/forgot-password")
 async def forgot_password(request: Request) -> Dict[str, Any]:
-    """Send password reset OTP via email."""
+    """Send password reset email with token."""
     try:
         body = await request.json()
         email = body.get("email", "").lower().strip()
@@ -1263,6 +1480,7 @@ async def forgot_password(request: Request) -> Dict[str, Any]:
         if not email:
             raise HTTPException(status_code=400, detail="Email is required")
         
+        print(f"[AUTH] Password reset requested for: {email} (requested user_type: {user_type})")
         
         # Check if user exists
         users = await db.select("users", filters={"email": email})
@@ -1284,7 +1502,7 @@ async def forgot_password(request: Request) -> Dict[str, Any]:
         
         # Validate that the user's role matches the requested role (if user_type is provided)
         if user_type and actual_user_type != user_type:
-
+            print(f"[AUTH] Role mismatch: User is {actual_user_type}, but {user_type} was requested")
             raise HTTPException(
                 status_code=404, 
                 detail={
@@ -1296,240 +1514,358 @@ async def forgot_password(request: Request) -> Dict[str, Any]:
                 }
             )
         
-        # Send OTP via email for password reset
-        from ..services.otp_service import send_email_otp
+        # Generate reset token
+        reset_token = str(uuid.uuid4())
+        expires_at = dt.datetime.now(pytz.UTC) + dt.timedelta(hours=1)
         
-        otp_token = await send_email_otp(email, "password_reset")
+        # Store token in verification_tokens table with user_type metadata
+        token_data = {
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "token": reset_token,
+            "type": "password_reset",
+            "expires_at": expires_at.isoformat(),
+            "created_at": dt.datetime.now(pytz.UTC).isoformat()
+        }
         
+        # Add metadata if the column exists (some databases may not have it)
+        try:
+            # Try to include metadata as JSON string
+            token_data["metadata"] = json.dumps({"user_type": actual_user_type})
+        except Exception:
+            # If metadata fails, continue without it
+            pass
         
-
+        try:
+            await db.insert("verification_tokens", token_data)
+        except Exception as insert_error:
+            print(f"[AUTH] Error inserting reset token: {insert_error}")
+            print(traceback.format_exc())
+            # Try without metadata if it fails
+            token_data_simple = {
+                "id": str(uuid.uuid4()),
+                "user_id": user_id,
+                "token": reset_token,
+                "type": "password_reset",
+                "expires_at": expires_at.isoformat(),
+                "created_at": dt.datetime.now(pytz.UTC).isoformat()
+            }
+            try:
+                await db.insert("verification_tokens", token_data_simple)
+            except Exception as retry_error:
+                print(f"[AUTH] Error inserting reset token (retry): {retry_error}")
+                raise HTTPException(status_code=500, detail="Failed to create reset token. Please try again.")
+        print(f"[AUTH] Reset token created for user: {user_id} (type: {actual_user_type})")
+        
+        # Generate role-specific reset URL
+        # Always use production URL for password reset links (never localhost)
+        site_url = settings.SITE_URL or "https://homeandown.com"
+        # Ensure we never use localhost for password reset links - always use production
+        if "localhost" in site_url.lower() or "127.0.0.1" in site_url or site_url.startswith("http://") or "://localhost" in site_url.lower():
+            print(f"[AUTH] WARNING: SITE_URL is set to localhost/development URL: {site_url}, forcing production URL")
+            site_url = "https://homeandown.com"
+        
+        # Double-check: ensure we're using HTTPS production URL
+        if not site_url.startswith("https://"):
+            print(f"[AUTH] WARNING: SITE_URL doesn't use HTTPS: {site_url}, forcing production HTTPS URL")
+            site_url = "https://homeandown.com"
+        
+        print(f"[AUTH] Using reset URL base: {site_url}")
+        
+        # All user types use the same reset-password route
+        # The frontend will handle routing based on user type after successful reset
+        if actual_user_type == "admin":
+            reset_url = f"{site_url}/admin/reset-password"
+        elif actual_user_type == "agent":
+            reset_url = f"{site_url}/agent/reset-password"
+        else:
+            # For seller, buyer, and other types, use the main reset-password route
+            reset_url = f"{site_url}/reset-password"
+        
+        # Send reset email
+        reset_link = f"{reset_url}?token={reset_token}"
+        # Get user role display name
+        role_display = {
+            "admin": "Administrator",
+            "agent": "Agent",
+            "seller": "Seller",
+            "buyer": "Buyer"
+        }.get(actual_user_type, "User")
+        
+        email_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 0; background-color: #f5f5f5;">
+            <div style="max-width: 600px; margin: 40px auto; background-color: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+                <!-- Header -->
+                <div style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); padding: 40px 20px; text-align: center;">
+                    <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 700;">Home & Own</h1>
+                    <p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0 0; font-size: 16px;">Password Reset Request</p>
+                </div>
+                
+                <!-- Content -->
+                <div style="padding: 40px 30px;">
+                    <h2 style="color: #1e293b; margin: 0 0 20px 0; font-size: 24px;">Hello {user.get('first_name', 'User')},</h2>
+                    
+                    <p style="color: #475569; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+                        We received a request to reset the password for your <strong>{role_display}</strong> account on Home & Own.
+                    </p>
+                    
+                    <p style="color: #475569; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
+                        Click the button below to securely reset your password:
+                    </p>
+                    
+                    <!-- Button -->
+                    <div style="text-align: center; margin: 40px 0;">
+                    <a href="{reset_link}" 
+                           style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); 
+                                  color: white; padding: 16px 40px; text-decoration: none; border-radius: 8px; 
+                                  font-weight: 600; font-size: 16px; box-shadow: 0 4px 6px rgba(37, 99, 235, 0.3);">
+                            Reset Your Password
+                    </a>
+                </div>
+                    
+                    <!-- Alternative Link -->
+                    <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 30px 0;">
+                        <p style="color: #64748b; font-size: 14px; margin: 0 0 10px 0;">
+                            Or copy and paste this link into your browser:
+                        </p>
+                        <p style="color: #2563eb; font-size: 14px; word-break: break-all; margin: 0;">
+                            {reset_link}
+                        </p>
+                    </div>
+                    
+                    <!-- Security Notice -->
+                    <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; margin: 30px 0; border-radius: 4px;">
+                        <p style="color: #92400e; font-size: 14px; margin: 0; line-height: 1.5;">
+                            <strong>Security Notice:</strong><br>
+                            This link will expire in <strong>1 hour</strong> for your security.<br>
+                            If you didn't request this password reset, please ignore this email and your password will remain unchanged.
+                        </p>
+                    </div>
+                    
+                    <p style="color: #64748b; font-size: 14px; line-height: 1.6; margin: 30px 0 0 0;">
+                        If you're having trouble with the button above, you can also visit your {role_display.lower()} portal directly and use the "Forgot Password" link.
+                    </p>
+                </div>
+                
+                <!-- Footer -->
+                <div style="background-color: #f8fafc; padding: 30px; border-top: 1px solid #e2e8f0; text-align: center;">
+                    <p style="color: #64748b; font-size: 14px; margin: 0 0 10px 0;">
+                        Best regards,<br>
+                        <strong>The Home & Own Team</strong>
+                    </p>
+                    <p style="color: #94a3b8; font-size: 12px; margin: 20px 0 0 0;">
+                    © 2025 Home & Own. All rights reserved.
+                </p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        email_result = await send_email(
+            to=email,
+            subject="Reset Your Password - Home & Own",
+            html=email_html
+        )
+        
+        # Check email sending result
+        if email_result.get("status") == "sent":
+            print(f"[AUTH] Password reset email sent successfully to: {email} via {email_result.get('provider', 'unknown')}")
+        else:
+            print(f"[AUTH] Password reset email may have failed: {email_result.get('error', 'Unknown error')}")
+            # Still return success to user for security (don't reveal if email exists)
+        
         return {
             "success": True,
-            "message": "OTP has been sent to your email address. Please check your inbox.",
-            "email": email  # Return email for frontend to use in OTP verification
+            "message": "If an account exists for this email, a reset link has been sent."
         }
         
     except HTTPException:
         raise
     except Exception as e:
-
+        print(f"[AUTH] Forgot password error: {e}")
+        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail="Failed to process password reset request")
 
 
 @router.post("/reset-password")
 async def reset_password(request: Request) -> Dict[str, Any]:
-    """Reset password using OTP verification."""
+    """Reset password using token."""
     try:
         body = await request.json()
-        email = body.get("email", "").lower().strip()
-        otp = body.get("otp", "").strip()
+        token = body.get("token", "").strip()
         new_password = body.get("password", "").strip()
-        confirm_password = body.get("confirm_password", "").strip()
         
-        if not email or not otp or not new_password:
-            raise HTTPException(status_code=400, detail="Email, OTP, and new password are required")
-        
-        if new_password != confirm_password:
-            raise HTTPException(status_code=400, detail="Passwords do not match")
+        if not token or not new_password:
+            raise HTTPException(status_code=400, detail="Token and new password are required")
         
         if len(new_password) < 8:
             raise HTTPException(status_code=400, detail="Password must be at least 8 characters long")
-
-        # Verify OTP
-        from ..services.otp_service import verify_email_otp
         
-        is_valid = verify_email_otp(email, otp, "password_reset")
+        print(f"[AUTH] Password reset attempt with token: {token[:8]}...")
         
+        # Find token
+        tokens = await db.select("verification_tokens", filters={
+            "token": token,
+            "type": "password_reset"
+        })
         
+        if not tokens:
+            raise HTTPException(status_code=400, detail="Invalid or expired reset token")
         
-        if not is_valid:
-            raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+        token_data = tokens[0]
         
-        # Find user by email
-        users = await db.select("users", filters={"email": email})
-        if not users:
-            raise HTTPException(status_code=404, detail="User not found")
+        # Check if token is expired
+        expires_at = dt.datetime.fromisoformat(token_data["expires_at"].replace("Z", "+00:00"))
+        if dt.datetime.now(pytz.UTC) > expires_at:
+            # Delete expired token
+            await db.delete("verification_tokens", {"id": token_data["id"]})
+            raise HTTPException(status_code=400, detail="Reset token has expired")
         
-        user = users[0]
-        user_id = user["id"]
+        # Check if token already used
+        if token_data.get("used_at"):
+            raise HTTPException(status_code=400, detail="Reset token has already been used")
+        
+        user_id = token_data["user_id"]
         
         # Hash new password
-        from ..core.crypto import get_password_hash
-        from ..services.email import send_email
-        from ..config import settings
         password_hash = get_password_hash(new_password)
         
-        # Update user password
-        
+        # Update user password (fix: correct parameter order for db.update)
         await db.update("users", {
             "password_hash": password_hash,
             "updated_at": dt.datetime.now(pytz.UTC).isoformat()
         }, {"id": user_id})
         
+        # Mark token as used (fix: correct parameter order for db.update)
+        await db.update("verification_tokens", {
+            "used_at": dt.datetime.now(pytz.UTC).isoformat()
+        }, {"id": token_data["id"]})
         
-
+        print(f"[AUTH] Password reset successful for user: {user_id}")
+        
         # Get user details and send confirmation email
-        user_type = user.get("user_type", "buyer").lower()
-        
-        # Get role display name and login URL
-        role_info = {
-            "admin": {"name": "Administrator", "url": "/admin/login"},
-            "agent": {"name": "Agent", "url": "/agent/login"},
-            "seller": {"name": "Seller", "url": "/login"},
-            "buyer": {"name": "Buyer", "url": "/login"}
-        }
-        role = role_info.get(user_type, {"name": "User", "url": "/login"})
-        
-        # Use SITE_URL from environment (required for production)
-        site_url = settings.SITE_URL
-        if not site_url:
-            raise ValueError("SITE_URL environment variable is required for production deployment")
-        # Ensure we use HTTPS in production
-        if not site_url.startswith("https://") and not site_url.startswith("http://localhost"):
-
-        login_url = f"{site_url}{role['url']}"
-        
-        # Send confirmation email
-        try:
-            user_name = user.get('first_name', 'User')
-            user_email = user.get('email', '')
-            timestamp = dt.datetime.now(pytz.UTC).strftime('%B %d, %Y at %I:%M %p UTC')
-            support_email = getattr(settings, 'SUPPORT_EMAIL', 'support@homeandown.com')
+        users = await db.select("users", filters={"id": user_id})
+        user_type = "buyer"  # Default
+        if users:
+            user = users[0]
+            user_type = user.get("user_type", "buyer").lower()
+            
+            # Get role display name and login URL
+            role_info = {
+                "admin": {"name": "Administrator", "url": "/admin/login"},
+                "agent": {"name": "Agent", "url": "/agent/login"},
+                "seller": {"name": "Seller", "url": "/login"},
+                "buyer": {"name": "Buyer", "url": "/login"}
+            }
+            role = role_info.get(user_type, {"name": "User", "url": "/login"})
+            
+            # Always use production URL for login links (never localhost)
+            site_url = settings.SITE_URL or "https://homeandown.com"
+            # Ensure we never use localhost for login links
+            if "localhost" in site_url.lower() or "127.0.0.1" in site_url or site_url.startswith("http://"):
+                print(f"[AUTH] SITE_URL is set to localhost/development URL: {site_url}, using production URL instead")
+                site_url = "https://homeandown.com"
+            login_url = f"{site_url}{role['url']}"
             
             confirmation_html = f"""
             <!DOCTYPE html>
-            <html lang="en">
+            <html>
             <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Password Reset Successful - Home & Own</title>
             </head>
-            <body style="margin: 0; padding: 0; background-color: #f5f7fa; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f5f7fa;">
-                    <tr>
-                        <td align="center" style="padding: 40px 20px;">
-                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); overflow: hidden;">
-                                <!-- Header -->
-                                <tr>
-                                    <td style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 50px 30px; text-align: center;">
-                                        <div style="width: 80px; height: 80px; background-color: rgba(255, 255, 255, 0.2); border-radius: 50%; margin: 0 auto 24px; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px);">
-                                            <span style="font-size: 40px; color: #ffffff;">✓</span>
-                                        </div>
-                                        <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700; letter-spacing: -0.5px;">Password Reset Successful!</h1>
-                                        <p style="margin: 12px 0 0 0; color: rgba(255, 255, 255, 0.95); font-size: 16px;">Your password has been updated</p>
-                                    </td>
-                                </tr>
-                                
-                                <!-- Content -->
-                                <tr>
-                                    <td style="padding: 50px 40px;">
-                                        <h2 style="margin: 0 0 20px 0; color: #1e293b; font-size: 24px; font-weight: 600;">Hello {user_name},</h2>
-                                        
-                                        <p style="margin: 0 0 24px 0; color: #475569; font-size: 16px; line-height: 1.7;">
-                                            Your password has been successfully reset for your <strong style="color: #1e293b;">{role['name']}</strong> account on Home & Own.
-                                        </p>
-                                        
-                                        <p style="margin: 0 0 40px 0; color: #475569; font-size: 16px; line-height: 1.7;">
-                                            You can now log in to your account using your new password. For security reasons, please keep your password confidential and do not share it with anyone.
-                                        </p>
-                                        
-                                        <!-- Login Button -->
-                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                                            <tr>
-                                                <td align="center" style="padding: 0 0 40px 0;">
-                                                    <a href="{login_url}" 
-                                                       style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); 
-                                                              color: #ffffff; padding: 16px 48px; text-decoration: none; border-radius: 10px; 
-                                                              font-weight: 600; font-size: 16px; box-shadow: 0 8px 16px rgba(37, 99, 235, 0.3);
-                                                              transition: all 0.3s ease;">
-                                                        Login to Your Account
-                                                    </a>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                        
-                                        <!-- Security Alert -->
-                                        <div style="background-color: #fee2e2; border-left: 4px solid #ef4444; border-radius: 8px; padding: 20px; margin: 0 0 32px 0;">
-                                            <p style="margin: 0 0 8px 0; color: #991b1b; font-size: 14px; font-weight: 600;">
-                                                🔒 Security Alert
-                                            </p>
-                                            <p style="margin: 0; color: #991b1b; font-size: 14px; line-height: 1.6;">
-                                                If you didn't make this change, please contact our support team immediately at 
-                                                <a href="mailto:{support_email}" style="color: #991b1b; text-decoration: underline; font-weight: 500;">{support_email}</a>
-                                            </p>
-                                        </div>
-                                        
-                                        <!-- Details Box -->
-                                        <div style="background-color: #f8fafc; border-radius: 10px; padding: 24px; margin: 0 0 32px 0; border: 1px solid #e2e8f0;">
-                                            <p style="margin: 0 0 16px 0; color: #1e293b; font-size: 15px; font-weight: 600;">Password Reset Details:</p>
-                                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                                                <tr>
-                                                    <td style="padding: 8px 0; color: #64748b; font-size: 14px; line-height: 1.8;">
-                                                        <strong style="color: #475569;">Date & Time:</strong> {timestamp}
-                                                    </td>
-                                                </tr>
-                                                <tr>
-                                                    <td style="padding: 8px 0; color: #64748b; font-size: 14px; line-height: 1.8;">
-                                                        <strong style="color: #475569;">Account Type:</strong> {role['name']}
-                                                    </td>
-                                                </tr>
-                                                <tr>
-                                                    <td style="padding: 8px 0; color: #64748b; font-size: 14px; line-height: 1.8;">
-                                                        <strong style="color: #475569;">Email:</strong> {user_email}
-                                                    </td>
-                                                </tr>
-                                            </table>
-                                        </div>
-                                        
-                                        <p style="margin: 0; color: #94a3b8; font-size: 14px; text-align: center; line-height: 1.6;">
-                                            Need help? Contact us at 
-                                            <a href="mailto:{support_email}" style="color: #2563eb; text-decoration: none; font-weight: 500;">{support_email}</a>
-                                        </p>
-                                    </td>
-                                </tr>
-                                
-                                <!-- Footer -->
-                                <tr>
-                                    <td style="background-color: #f8fafc; padding: 30px 40px; text-align: center; border-top: 1px solid #e2e8f0;">
-                                        <p style="margin: 0 0 12px 0; color: #64748b; font-size: 14px; line-height: 1.6;">
-                                            Best regards,<br>
-                                            <strong style="color: #1e293b;">The Home & Own Team</strong>
-                                        </p>
-                                        <p style="margin: 0; color: #94a3b8; font-size: 12px;">
-                                            © 2025 Home & Own. All rights reserved.
-                                        </p>
-                                    </td>
-                                </tr>
-                            </table>
-                        </td>
-                    </tr>
-                </table>
+            <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 0; background-color: #f5f5f5;">
+                <div style="max-width: 600px; margin: 40px auto; background-color: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+                    <!-- Header -->
+                    <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 40px 20px; text-align: center;">
+                        <div style="width: 60px; height: 60px; background-color: white; border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center;">
+                            <span style="font-size: 30px;">✓</span>
+                        </div>
+                        <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 700;">Password Changed Successfully!</h1>
+                    </div>
+                    
+                    <!-- Content -->
+                    <div style="padding: 40px 30px;">
+                        <h2 style="color: #1e293b; margin: 0 0 20px 0; font-size: 24px;">Hello {user.get('first_name', 'User')},</h2>
+                        
+                        <p style="color: #475569; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+                            Your password has been successfully changed for your <strong>{role['name']}</strong> account on Home & Own.
+                        </p>
+                        
+                        <p style="color: #475569; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
+                            You can now use your new password to log in to your account.
+                        </p>
+                        
+                        <!-- Login Button -->
+                        <div style="text-align: center; margin: 40px 0;">
+                            <a href="{login_url}" 
+                               style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); 
+                                      color: white; padding: 16px 40px; text-decoration: none; border-radius: 8px; 
+                                      font-weight: 600; font-size: 16px; box-shadow: 0 4px 6px rgba(37, 99, 235, 0.3);">
+                                Login to Your Account
+                            </a>
+                        </div>
+                        
+                        <!-- Security Alert -->
+                        <div style="background-color: #fee2e2; border-left: 4px solid #ef4444; padding: 16px; margin: 30px 0; border-radius: 4px;">
+                            <p style="color: #991b1b; font-size: 14px; margin: 0; line-height: 1.5;">
+                                <strong>🔒 Security Alert:</strong><br>
+                                If you didn't make this change, please contact our support team immediately at <a href="mailto:support@homeandown.com" style="color: #991b1b; text-decoration: underline;">support@homeandown.com</a>
+                            </p>
+                        </div>
+                        
+                        <!-- Additional Info -->
+                        <div style="background-color: #f8fafc; border-radius: 8px; padding: 20px; margin: 30px 0;">
+                            <p style="color: #64748b; font-size: 14px; margin: 0 0 10px 0; line-height: 1.6;">
+                                <strong>Password Reset Details:</strong>
+                            </p>
+                            <p style="color: #64748b; font-size: 14px; margin: 0; line-height: 1.6;">
+                                • Date: {dt.datetime.now(pytz.UTC).strftime('%B %d, %Y at %I:%M %p UTC')}<br>
+                                • Account Type: {role['name']}<br>
+                                • Email: {user.get('email', '')}
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <!-- Footer -->
+                    <div style="background-color: #f8fafc; padding: 30px; border-top: 1px solid #e2e8f0; text-align: center;">
+                        <p style="color: #64748b; font-size: 14px; margin: 0 0 10px 0;">
+                            Best regards,<br>
+                            <strong>The Home & Own Team</strong>
+                        </p>
+                        <p style="color: #94a3b8; font-size: 12px; margin: 20px 0 0 0;">
+                        © 2025 Home & Own. All rights reserved.
+                    </p>
+                    </div>
+                </div>
             </body>
             </html>
             """
             
-            
             await send_email(
                 to=user["email"],
-                subject="Password Reset Successful - Home & Own",
+                subject="Password Changed Successfully - Home & Own",
                 html=confirmation_html
             )
-            
-
-        except Exception as email_error:
-
-            # Don't fail password reset if email fails
         
         return {
             "success": True,
-            "message": "Password reset successful. An email confirmation has been sent. You can now log in with your new password.",
+            "message": "Password reset successful. You can now log in with your new password.",
             "user_type": user_type
         }
         
     except HTTPException:
         raise
     except Exception as e:
-
+        print(f"[AUTH] Reset password error: {e}")
+        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail="Failed to reset password")
 
 @router.post("/change-password")
@@ -1568,10 +1904,7 @@ async def change_password(request: Request) -> Dict[str, Any]:
         password_hash = user.get("password_hash")
         
         # Verify current password
-        
-        password_valid = password_hash and verify_password(current_password, password_hash)
-        
-        if not password_valid:
+        if not password_hash or not verify_password(current_password, password_hash):
             raise HTTPException(status_code=400, detail="Invalid current password")
         
         # Check if new password is same as current
@@ -1586,139 +1919,31 @@ async def change_password(request: Request) -> Dict[str, Any]:
             "password_hash": new_password_hash,
             "updated_at": dt.datetime.now(pytz.UTC).isoformat()
         }, {"id": user_id})
-
+        
+        print(f"[AUTH] Password changed successfully for user: {user_id}")
+        
         # Send confirmation email
         try:
             user_email = user.get("email")
             user_name = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip() or "User"
-            user_type = user.get("user_type", "buyer").lower()
-            timestamp = dt.datetime.now(pytz.UTC).strftime('%B %d, %Y at %I:%M %p UTC')
-            
-            # Get role display name and login URL
-            role_info = {
-                "admin": {"name": "Administrator", "url": "/admin/login"},
-                "agent": {"name": "Agent", "url": "/agent/login"},
-                "seller": {"name": "Seller", "url": "/login"},
-                "buyer": {"name": "Buyer", "url": "/login"}
-            }
-            role = role_info.get(user_type, {"name": "User", "url": "/login"})
-            
-            # Use SITE_URL from environment (required for production)
-            site_url = settings.SITE_URL
-            if not site_url:
-                raise ValueError("SITE_URL environment variable is required for production deployment")
-            # Ensure we use HTTPS in production
-            if not site_url.startswith("https://") and not site_url.startswith("http://localhost"):
-
-            login_url = f"{site_url}{role['url']}"
             
             email_html = f"""
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <meta charset="utf-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Password Changed Successfully - Home & Own</title>
-            </head>
-            <body style="margin: 0; padding: 0; background-color: #f5f7fa; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f5f7fa;">
-                    <tr>
-                        <td align="center" style="padding: 40px 20px;">
-                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); overflow: hidden;">
-                                <!-- Header -->
-                                <tr>
-                                    <td style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 50px 30px; text-align: center;">
-                                        <div style="width: 80px; height: 80px; background-color: rgba(255, 255, 255, 0.2); border-radius: 50%; margin: 0 auto 24px; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px);">
-                                            <span style="font-size: 40px; color: #ffffff;">✓</span>
-                                        </div>
-                                        <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700; letter-spacing: -0.5px;">Password Changed Successfully!</h1>
-                                        <p style="margin: 12px 0 0 0; color: rgba(255, 255, 255, 0.95); font-size: 16px;">Your account is now more secure</p>
-                                    </td>
-                                </tr>
-                                
-                                <!-- Content -->
-                                <tr>
-                                    <td style="padding: 50px 40px;">
-                                        <h2 style="margin: 0 0 20px 0; color: #1e293b; font-size: 24px; font-weight: 600;">Hello {user_name},</h2>
-                                        
-                                        <p style="margin: 0 0 24px 0; color: #475569; font-size: 16px; line-height: 1.7;">
-                                            Your password has been successfully changed for your <strong style="color: #1e293b;">{role['name']}</strong> account on Home & Own.
-                                        </p>
-                                        
-                                        <p style="margin: 0 0 40px 0; color: #475569; font-size: 16px; line-height: 1.7;">
-                                            You can now log in to your account using your new password. For security reasons, please keep your password confidential and do not share it with anyone.
-                                        </p>
-                                        
-                                        <!-- Login Button -->
-                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                                            <tr>
-                                                <td align="center" style="padding: 0 0 40px 0;">
-                                                    <a href="{login_url}" 
-                                                       style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); 
-                                                              color: #ffffff; padding: 16px 48px; text-decoration: none; border-radius: 10px; 
-                                                              font-weight: 600; font-size: 16px; box-shadow: 0 8px 16px rgba(37, 99, 235, 0.3);">
-                                                        Continue to Dashboard
-                                                    </a>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                        
-                                        <!-- Security Alert -->
-                                        <div style="background-color: #fee2e2; border-left: 4px solid #ef4444; border-radius: 8px; padding: 20px; margin: 0 0 32px 0;">
-                                            <p style="margin: 0 0 8px 0; color: #991b1b; font-size: 14px; font-weight: 600;">
-                                                🔒 Security Alert
-                                            </p>
-                                            <p style="margin: 0; color: #991b1b; font-size: 14px; line-height: 1.6;">
-                                                If you didn't make this change, please contact our support team immediately at 
-                                                <a href="mailto:{support_email}" style="color: #991b1b; text-decoration: underline; font-weight: 500;">{support_email}</a>
-                                            </p>
-                                        </div>
-                                        
-                                        <!-- Details Box -->
-                                        <div style="background-color: #f8fafc; border-radius: 10px; padding: 24px; margin: 0 0 32px 0; border: 1px solid #e2e8f0;">
-                                            <p style="margin: 0 0 16px 0; color: #1e293b; font-size: 15px; font-weight: 600;">Password Change Details:</p>
-                                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                                                <tr>
-                                                    <td style="padding: 8px 0; color: #64748b; font-size: 14px; line-height: 1.8;">
-                                                        <strong style="color: #475569;">Date & Time:</strong> {timestamp}
-                                                    </td>
-                                                </tr>
-                                                <tr>
-                                                    <td style="padding: 8px 0; color: #64748b; font-size: 14px; line-height: 1.8;">
-                                                        <strong style="color: #475569;">Account Type:</strong> {role['name']}
-                                                    </td>
-                                                </tr>
-                                                <tr>
-                                                    <td style="padding: 8px 0; color: #64748b; font-size: 14px; line-height: 1.8;">
-                                                        <strong style="color: #475569;">Email:</strong> {user_email}
-                                                    </td>
-                                                </tr>
-                                            </table>
-                                        </div>
-                                        
-                                        <p style="margin: 0; color: #94a3b8; font-size: 14px; text-align: center; line-height: 1.6;">
-                                            Need help? Contact us at 
-                                            <a href="mailto:{support_email}" style="color: #2563eb; text-decoration: none; font-weight: 500;">{support_email}</a>
-                                        </p>
-                                    </td>
-                                </tr>
-                                
-                                <!-- Footer -->
-                                <tr>
-                                    <td style="background-color: #f8fafc; padding: 30px 40px; text-align: center; border-top: 1px solid #e2e8f0;">
-                                        <p style="margin: 0 0 12px 0; color: #64748b; font-size: 14px; line-height: 1.6;">
-                                            Best regards,<br>
-                                            <strong style="color: #1e293b;">The Home & Own Team</strong>
-                                        </p>
-                                        <p style="margin: 0; color: #94a3b8; font-size: 12px;">
-                                            © 2025 Home & Own. All rights reserved.
-                                        </p>
-                                    </td>
-                                </tr>
-                            </table>
-                        </td>
-                    </tr>
-                </table>
+            <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                    <h2 style="color: #10b981;">Password Changed Successfully</h2>
+                    <p>Hello {user_name},</p>
+                    <p>Your password has been successfully changed.</p>
+                    <div style="background-color: #f0f9ff; border-left: 4px solid #10b981; padding: 15px; margin: 20px 0;">
+                        <p style="margin: 0;"><strong>Security Notice:</strong></p>
+                        <p style="margin: 5px 0 0 0;">If you didn't make this change, please contact our support team immediately.</p>
+                    </div>
+                    <p style="color: #666; font-size: 14px; margin-top: 30px;">
+                        You can now log in with your new password.
+                    </p>
+                    <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;">
+                    <p style="color: #999; font-size: 12px;">© 2025 Home & Own. All rights reserved.</p>
+                </div>
             </body>
             </html>
             """
@@ -1728,9 +1953,9 @@ async def change_password(request: Request) -> Dict[str, Any]:
                 subject="Password Changed Successfully - Home & Own",
                 html=email_html
             )
-
+            print(f"[AUTH] Password change confirmation email sent to: {user_email}")
         except Exception as email_error:
-
+            print(f"[AUTH] Failed to send password change email: {email_error}")
             # Don't fail password change if email fails
         
         return {
@@ -1741,5 +1966,6 @@ async def change_password(request: Request) -> Dict[str, Any]:
     except HTTPException:
         raise
     except Exception as e:
-
+        print(f"[AUTH] Change password error: {e}")
+        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Failed to change password: {str(e)}")

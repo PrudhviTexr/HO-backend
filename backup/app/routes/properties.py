@@ -621,10 +621,9 @@ async def get_properties(
         if property_type:
             # Handle multiple property types (comma-separated)
             if ',' in property_type:
-                # For multiple types, use "in" filter for database-level filtering
+                # For multiple types, we'll filter after fetching
                 property_types = [pt.strip() for pt in property_type.split(',')]
                 print(f"[PROPERTIES] Multiple property types requested: {property_types}")
-                base_filters['property_type'] = {"in": property_types}
             else:
                 base_filters['property_type'] = property_type
         if listing_type:
@@ -795,8 +794,11 @@ async def get_properties(
             if len(properties) < initial_count:
                 print(f"[PROPERTIES] Area filter: {initial_count} -> {len(properties)} properties")
 
-        # Note: Multiple property types are now filtered at database level using "in" filter
-        # No need for client-side filtering here anymore
+        # Filter by multiple property types if requested
+        if property_type and ',' in property_type:
+            property_types = [pt.strip() for pt in property_type.split(',')]
+            properties = [prop for prop in properties if prop.get('property_type') in property_types]
+            print(f"[PROPERTIES] Filtered to {len(properties)} properties matching types: {property_types}")
 
         # Get unique cities for debugging
         cities_in_db = set()
@@ -1035,6 +1037,39 @@ async def create_property(request: Request):
         print(f"[PROPERTIES] Creating new property")
         print(f"[PROPERTIES] Received data keys: {list(property_data.keys())}")
         print(f"[PROPERTIES] Property data sample: title={property_data.get('title')}, type={property_data.get('property_type')}")
+        
+        # EARLY CLEANUP: Remove empty strings from all fields immediately after parsing
+        # This prevents empty strings from propagating through the code
+        # Define all numeric fields that should never have empty strings
+        numeric_field_names = [
+            'price', 'monthly_rent', 'security_deposit', 'maintenance_charges',
+            'rate_per_sqft', 'rate_per_sqyd', 'area_sqft', 'area_sqyd', 'area_acres',
+            'carpet_area_sqft', 'built_up_area_sqft', 'plot_area_sqft', 'plot_area_sqyd',
+            'latitude', 'longitude', 'bedrooms', 'bathrooms', 'balconies',
+            'total_floors', 'floor', 'parking_spaces', 'floor_count', 'number_of_floors',
+            'starting_price_per_unit', 'borewells_number', 'borewells_hp', 
+            'distance_to_highway_km', 'approach_road_width_ft', 'total_area_acres', 
+            'road_width', 'ceiling_height_ft', 'power_load_kva', 'total_builtup_sqft',
+            'dimensions_length_ft', 'dimensions_breadth_ft', 'total_units', 
+            'units_per_floor', 'total_towers', 'car_parking_slots', 'super_builtup_sqft', 'age'
+        ]
+        
+        # Remove empty strings from numeric fields immediately
+        for key in list(property_data.keys()):
+            value = property_data[key]
+            # Check for empty strings (including whitespace-only)
+            if isinstance(value, str) and (value == '' or value.strip() == '' or value == 'NA'):
+                if key == 'area_sqft':
+                    # area_sqft is required, set to 0
+                    property_data[key] = 0
+                    print(f"[PROPERTIES] EARLY CLEANUP: Found empty string for {key}, set to 0")
+                elif key in numeric_field_names:
+                    # Remove empty strings from numeric fields (PostgreSQL will use NULL/default)
+                    del property_data[key]
+                    print(f"[PROPERTIES] EARLY CLEANUP: Removed empty string from numeric field {key}")
+                # For non-numeric fields, we'll keep them for now (they'll be handled later)
+        
+        print(f"[PROPERTIES] After early cleanup, remaining keys: {list(property_data.keys())}")
         
         # Try to get user_id from authentication if available
         # Whoever creates the property is the owner (owner_id and added_by)
@@ -1702,18 +1737,27 @@ async def create_property(request: Request):
             'super_builtup_sqft', 'number_of_floors', 'age'
         ]
         
-        for field in all_numeric_fields:
-            if field in property_data:
-                value = property_data[field]
-                # Convert empty strings to None for numeric fields
-                if value == '' or value == 'NA':
-                    # Special handling for area_sqft (must not be None)
-                    if field == 'area_sqft':
-                        property_data[field] = 0
-                        print(f"[PROPERTIES] Converted empty string for {field} to 0 (NOT NULL constraint)")
-                    else:
-                        property_data[field] = None
-                        print(f"[PROPERTIES] Converted empty string for {field} to None")
+        # CLEANUP: Remove all empty strings from numeric fields
+        # PostgreSQL cannot handle empty strings for numeric fields - they must be removed or set to valid values
+        fields_to_remove = []
+        for key, value in list(property_data.items()):
+            if value == '' or value == 'NA' or (isinstance(value, str) and value.strip() == ''):
+                # Special case: area_sqft must not be empty (NOT NULL constraint)
+                if key == 'area_sqft':
+                    property_data[key] = 0
+                    print(f"[PROPERTIES] ⚠️ Found empty string for {key}, set to 0 (NOT NULL)")
+                # For all other numeric fields, remove them entirely (PostgreSQL will use NULL/default)
+                elif key in all_numeric_fields:
+                    fields_to_remove.append(key)
+                    print(f"[PROPERTIES] ⚠️ Found empty string for numeric field {key}, will remove")
+                # For non-numeric fields, also remove empty strings
+                else:
+                    fields_to_remove.append(key)
+                    print(f"[PROPERTIES] ⚠️ Found empty string for {key}, will remove")
+        
+        # Remove all empty string fields
+        for key in fields_to_remove:
+            del property_data[key]
         
         print(f"[PROPERTIES] Final property data keys: {list(property_data.keys())}")
         print(f"[PROPERTIES] Required fields check:")
@@ -1732,6 +1776,23 @@ async def create_property(request: Request):
         
         # Insert property
         try:
+            # ABSOLUTE FINAL CHECK: Remove any remaining empty strings from numeric fields only
+            # This is the last chance before database insert
+            final_cleanup_keys = []
+            for key in all_numeric_fields:
+                if key in property_data:
+                    value = property_data[key]
+                    if isinstance(value, str) and (value == '' or value.strip() == '' or value == 'NA'):
+                        if key == 'area_sqft':
+                            property_data[key] = 0
+                            print(f"[PROPERTIES] ⚠️ ABSOLUTE FINAL: Found empty string for {key}, set to 0")
+                        else:
+                            final_cleanup_keys.append(key)
+                            print(f"[PROPERTIES] ⚠️ ABSOLUTE FINAL: Removing empty string from numeric field {key}")
+            
+            for key in final_cleanup_keys:
+                del property_data[key]
+            
             # ONE MORE CHECK: Ensure area_sqft is definitely set before insert
             if 'area_sqft' not in property_data or property_data['area_sqft'] is None:
                 property_data['area_sqft'] = 0.0
@@ -1835,40 +1896,6 @@ async def create_property(request: Request):
                 if to_insert:
                     for section_data in to_insert:
                         await db.insert("property_sections", section_data)
-        
-        # Link uploaded images to property
-        # Images uploaded before property creation have entity_id = user_id
-        # Update them to entity_id = property_id
-        try:
-            if user_id:
-                print(f"[PROPERTIES] Linking uploaded images to property {property_id}...")
-                # Find documents uploaded by this user for property images
-                # These are images uploaded before property creation
-                user_docs = await db.select("documents", filters={
-                    "entity_type": "property",
-                    "entity_id": user_id,  # Images uploaded with user_id as entity_id
-                    "document_category": "property_image"
-                })
-                
-                if user_docs and len(user_docs) > 0:
-                    print(f"[PROPERTIES] Found {len(user_docs)} images to link to property {property_id}")
-                    # Update each document to link to the property
-                    for doc in user_docs:
-                        try:
-                            await db.update("documents", doc["id"], {
-                                "entity_id": property_id,
-                                "updated_at": now
-                            })
-                            print(f"[PROPERTIES] Linked image {doc.get('id')} to property {property_id}")
-                        except Exception as link_error:
-                            print(f"[PROPERTIES] Error linking image {doc.get('id')}: {link_error}")
-                else:
-                    print(f"[PROPERTIES] No pre-uploaded images found for user {user_id}")
-        except Exception as link_images_error:
-            print(f"[PROPERTIES] Error linking images to property: {link_images_error}")
-            import traceback
-            print(traceback.format_exc())
-            # Don't fail property creation if image linking fails
                     print(f"[PROPERTIES] Added {len(to_insert)} sections to property")
         
         # Send property submission email to user

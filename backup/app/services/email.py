@@ -18,11 +18,10 @@ async def send_email(to: str, subject: str, html: str, sender: str | None = None
     
     # Use branded sender
     default_sender = settings.GMAIL_USERNAME
-    default_noreply = settings.SUPPORT_EMAIL.replace("support@", "noreply@") if hasattr(settings, 'SUPPORT_EMAIL') and settings.SUPPORT_EMAIL else "noreply@homeandown.com"
     if default_sender and "<" not in (sender or default_sender):
         branded_sender = f"Home & Own <{default_sender}>"
     else:
-        branded_sender = sender or default_sender or default_noreply
+        branded_sender = sender or default_sender or "noreply@homeandown.com"
     
     msg["From"] = branded_sender
     msg["To"] = to
@@ -188,10 +187,9 @@ async def send_email(to: str, subject: str, html: str, sender: str | None = None
     if sendgrid_key:
         print("[EMAIL]   Sending via SendGrid API (SENDGRID_API_KEY detected)")
         try:
-            default_email = settings.SUPPORT_EMAIL.replace("support@", "noreply@") if hasattr(settings, 'SUPPORT_EMAIL') and settings.SUPPORT_EMAIL else "noreply@homeandown.com"
             payload = {
                 "personalizations": [{"to": [{"email": to}]}],
-                "from": {"email": settings.GMAIL_USERNAME or default_email, "name": "Home & Own"},
+                "from": {"email": settings.GMAIL_USERNAME or "noreply@homeandown.com", "name": "Home & Own"},
                 "subject": subject,
                 "content": [{"type": "text/html", "value": html}]
             }
@@ -274,8 +272,7 @@ async def send_email(to: str, subject: str, html: str, sender: str | None = None
     return {"status": "failed", "error": "All email providers failed or not configured"}
 
 async def send_otp_email(to: str, otp: str, action: str = "verification"):
-    """Send OTP via email with professional template"""
-    support_email = getattr(settings, 'SUPPORT_EMAIL', 'support@homeandown.com')
+    """Send OTP via email as backup to SMS"""
     action_messages = {
         "verification": "Email Verification",
         "bank_update": "Bank Details Update",
@@ -285,116 +282,54 @@ async def send_otp_email(to: str, otp: str, action: str = "verification"):
         "sensitive_action": "Security Verification"
     }
     
-    action_descriptions = {
-        "verification": "verify your email address",
-        "bank_update": "update your bank details",
-        "password_change": "change your password",
-        "password_reset": "reset your password",
-        "profile_update": "update your profile",
-        "sensitive_action": "complete this security verification"
-    }
-    
-    subject = f"Your {action_messages.get(action, 'Verification')} Code - Home & Own"
+    subject = f"{action_messages.get(action, 'Verification')} Code - Home & Own"
     
     html = f"""
     <!DOCTYPE html>
-    <html lang="en">
+    <html>
     <head>
         <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>{subject}</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
-    <body style="margin: 0; padding: 0; background-color: #f5f7fa; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f5f7fa;">
-            <tr>
-                <td align="center" style="padding: 40px 20px;">
-                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); overflow: hidden;">
-                        <!-- Header -->
-                        <tr>
-                            <td style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); padding: 40px 30px; text-align: center;">
-                                <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700; letter-spacing: -0.5px;">Home & Own</h1>
-                                <p style="margin: 8px 0 0 0; color: rgba(255, 255, 255, 0.95); font-size: 16px; font-weight: 500;">Security Verification</p>
-                            </td>
-                        </tr>
-                        
-                        <!-- Content -->
-                        <tr>
-                            <td style="padding: 50px 40px;">
-                                <h2 style="margin: 0 0 16px 0; color: #1e293b; font-size: 24px; font-weight: 600; text-align: center;">Your Verification Code</h2>
-                                
-                                <p style="margin: 0 0 32px 0; color: #475569; font-size: 16px; line-height: 1.6; text-align: center;">
-                                    Use the code below to {action_descriptions.get(action, 'complete verification')}:
-                                </p>
-                                
-                                <!-- OTP Code Box -->
-                                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                                    <tr>
-                                        <td align="center" style="padding: 0 0 32px 0;">
-                                            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 24px 32px; display: inline-block; box-shadow: 0 8px 16px rgba(102, 126, 234, 0.3);">
-                                                <span style="font-size: 42px; font-weight: 700; letter-spacing: 12px; color: #ffffff; font-family: 'Courier New', monospace; text-align: center; display: block;">{otp}</span>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                </table>
-                                
-                                <!-- Expiry Notice -->
-                                <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 8px; padding: 16px 20px; margin: 0 0 32px 0;">
-                                    <p style="margin: 0; color: #92400e; font-size: 14px; font-weight: 600; text-align: center;">
-                                        ⏱️ This code expires in {settings.OTP_EXP_MIN} minutes
-                                    </p>
-                                </div>
-                                
-                                <!-- Security Notice -->
-                                <div style="background-color: #f8fafc; border-radius: 8px; padding: 20px; margin: 0 0 32px 0; border: 1px solid #e2e8f0;">
-                                    <p style="margin: 0 0 8px 0; color: #64748b; font-size: 14px; font-weight: 600;">🔒 Security Tips:</p>
-                                    <ul style="margin: 0; padding-left: 20px; color: #64748b; font-size: 14px; line-height: 1.8;">
-                                        <li>Never share this code with anyone</li>
-                                        <li>Home & Own will never ask for your code via phone or email</li>
-                                        <li>If you didn't request this code, please ignore this email</li>
-                                    </ul>
-                                </div>
-                                
-                                <p style="margin: 0; color: #94a3b8; font-size: 14px; text-align: center; line-height: 1.6;">
-                                    If you're having trouble, please contact our support team at 
-                                    <a href="mailto:{support_email}" style="color: #2563eb; text-decoration: none; font-weight: 500;">{support_email}</a>
-                                </p>
-                            </td>
-                        </tr>
-                        
-                        <!-- Footer -->
-                        <tr>
-                            <td style="background-color: #f8fafc; padding: 30px 40px; text-align: center; border-top: 1px solid #e2e8f0;">
-                                <p style="margin: 0 0 12px 0; color: #64748b; font-size: 14px; line-height: 1.6;">
-                                    Best regards,<br>
-                                    <strong style="color: #1e293b;">The Home & Own Team</strong>
-                                </p>
-                                <p style="margin: 0; color: #94a3b8; font-size: 12px;">
-                                    © 2025 Home & Own. All rights reserved.
-                                </p>
-                            </td>
-                        </tr>
-                    </table>
-                </td>
-            </tr>
-        </table>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f9fafb; margin: 0; padding: 20px;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: white; border-radius: 12px; padding: 40px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+            <div style="text-align: center; margin-bottom: 30px;">
+                <h1 style="color: #0ca5e9; margin: 0; font-size: 28px; font-weight: 700;">Home & Own</h1>
+                <p style="color: #64748b; margin: 8px 0 0 0;">Security Verification</p>
+            </div>
+            
+            <h2 style="color: #1e293b; margin: 0 0 20px 0; text-align: center;">Your Security Code</h2>
+            
+            <p style="margin: 0 0 20px 0; font-size: 16px; text-align: center; color: #475569;">
+                Your verification code for <strong>{action_messages.get(action, 'verification')}</strong>:
+            </p>
+            
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 20px; display: inline-block; min-width: 200px;">
+                    <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: white; font-family: monospace;">{otp}</span>
+                </div>
+            </div>
+            
+            <div style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 16px; margin: 24px 0;">
+                <p style="margin: 0; font-size: 14px; color: #92400e; text-align: center;">
+                    <strong> This code expires in {settings.OTP_EXP_MIN} minutes</strong>
+                </p>
+            </div>
+            
+            <p style="margin: 0 0 24px 0; font-size: 14px; color: #6b7280; text-align: center;">
+                If you didn't request this code, please ignore this email or contact support.
+            </p>
+            
+            <div style="text-align: center; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+                <p style="font-size: 12px; color: #9ca3af; margin: 0;">
+                    Best regards,<br>
+                    <strong>The Home & Own Team</strong>
+                </p>
+            </div>
+        </div>
     </body>
     </html>
     """
     
-    # #region agent log
-    import json, os
-    debug_log_path = os.getenv('DEBUG_LOG_PATH', '')
-    if debug_log_path:
-        try:
-            with open(debug_log_path, 'a') as f:
-                f.write(json.dumps({"location":"email.py:335","message":"Sending OTP email","data":{"to":to,"action":action,"hasOtp":bool(otp)},"timestamp":int(__import__('time').time()*1000),"sessionId":"debug-session","runId":"run1","hypothesisId":"F"}) + '\n')
-        except: pass
-    # #endregion
     await send_email(to, subject, html)
-    # #region agent log
-    if debug_log_path:
-        try:
-            with open(debug_log_path, 'a') as f:
-                f.write(json.dumps({"location":"email.py:337","message":"OTP email sent","data":{"to":to,"action":action},"timestamp":int(__import__('time').time()*1000),"sessionId":"debug-session","runId":"run1","hypothesisId":"F"}) + '\n')
-        except: pass
-    # #endregion

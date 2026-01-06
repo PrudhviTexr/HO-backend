@@ -835,23 +835,7 @@ async def get_agent_bookings(
         # Log sample booking IDs for debugging
         if bookings_by_agent:
             sample_booking_ids = [b.get("id", "N/A")[:8] for b in bookings_by_agent[:3]]
-            print(f"[AGENT] Sample booking IDs by agent: {sample_booking_ids}")
-        
-        # Also check bookings for assigned properties where agent_id might be NULL
-        # This handles cases where bookings exist but agent_id wasn't set during creation
-        # We already have bookings_by_property which includes all bookings for assigned properties
-        # regardless of agent_id, so this should cover it. But let's add more logging.
-        print(f"[AGENT] Bookings by property count: {len(bookings_by_property or [])}")
-        if bookings_by_property:
-            sample_property_booking_ids = [b.get("id", "N/A")[:8] for b in bookings_by_property[:3]]
-            print(f"[AGENT] Sample booking IDs by property: {sample_property_booking_ids}")
-            # Log agent_id status for these bookings
-            agent_id_status = {}
-            for b in bookings_by_property[:5]:
-                bid = b.get("id", "N/A")[:8]
-                aid = b.get("agent_id")
-                agent_id_status[bid] = "set" if aid else "NULL"
-            print(f"[AGENT] Agent ID status in property bookings: {agent_id_status}")
+            print(f"[AGENT] Sample booking IDs: {sample_booking_ids}")
         
         # Combine bookings from properties and direct agent assignment
         all_bookings = (bookings_by_property or []) + (bookings_by_agent or [])
@@ -904,8 +888,7 @@ async def get_agent_bookings(
                 print(f"[AGENT] Fallback query also failed: {fallback_error}")
                 bookings_list = []
         
-        # Enhance bookings with property and user details
-        # NOTE: Don't filter out sold properties - agents should see all bookings for their assigned properties
+        # Enhance bookings with property and user details, filter out sold properties
         enhanced_bookings = []
         for booking in bookings_list:
             prop_id = booking.get("property_id")
@@ -915,8 +898,11 @@ async def get_agent_bookings(
             property_data = await db.select("properties", filters={"id": prop_id})
             property_info = property_data[0] if property_data else {}
             
-            # Don't skip bookings for sold properties - agents need to see all bookings
-            # The property status doesn't affect whether an agent should see the booking
+            # Skip bookings for sold properties
+            prop_status = (property_info.get('status') or '').lower().strip()
+            if prop_status == 'sold':
+                print(f"[AGENT] Skipping booking for sold property: {prop_id}")
+                continue
             
             # Get user details
             user_info = {}
