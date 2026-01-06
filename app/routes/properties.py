@@ -1783,6 +1783,38 @@ async def create_property(request: Request):
                                 property_data[field] = None
                             print(f"[PROPERTIES] FINAL CHECK: Failed to convert {field}='{value}' to number, set to None")
             
+            # ABSOLUTE FINAL SAFETY CHECK: Remove ALL empty strings from property_data
+            # PostgreSQL will error on ANY numeric field that receives an empty string
+            # This is a catch-all to ensure no empty strings slip through
+            fields_to_remove = []
+            for key, value in list(property_data.items()):
+                if value == '' or (isinstance(value, str) and value.strip() == '' and value != ''):
+                    # Don't remove required string fields like title, description, etc.
+                    string_fields = ['title', 'description', 'property_type', 'listing_type', 
+                                   'address', 'city', 'state', 'district', 'mandal', 'zip_code',
+                                   'status', 'custom_id', 'owner_id', 'seller_id', 'added_by',
+                                   'added_by_role', 'bhk_config', 'furnishing_status', 
+                                   'apartment_type', 'community_type', 'legal_status', 'rera_status',
+                                   'rera_number', 'commercial_subtype', 'land_type', 'soil_type',
+                                   'water_source', 'plot_type', 'venture_name', 'developer_name',
+                                   'suitable_for', 'shell_type', 'construction_status', 'view',
+                                   'project_name', 'builder_name', 'tower_block', 'flat_number',
+                                   'building_name', 'ownership_type', 'category', 'video_url',
+                                   'virtual_tour_url', 'pricing_display_mode', 'pricing_unit_type',
+                                   'price_unit', 'maintenance_unit', 'assigned_agent_id',
+                                   'state_id', 'district_id', 'mandal_id', 'road_type',
+                                   'plot_dimensions', 'plot_number', 'survey_numbers', 'irrigation',
+                                   'nearby_business_hubs', 'nearby_transport', 'floor_wise_area']
+                    
+                    if key not in string_fields:
+                        # This is likely a numeric or boolean field, remove empty string
+                        fields_to_remove.append(key)
+                        print(f"[PROPERTIES] ABSOLUTE FINAL: Removing empty string for field '{key}'")
+            
+            # Remove the fields with empty strings (let database use defaults or NULL)
+            for key in fields_to_remove:
+                del property_data[key]
+            
             print(f"[PROPERTIES] Attempting to insert property into database...")
             print(f"[PROPERTIES] Property ID: {property_id}")
             print(f"[PROPERTIES] Custom ID: {property_data.get('custom_id')}")
