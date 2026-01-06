@@ -1727,22 +1727,61 @@ async def create_property(request: Request):
             else:
                 print(f"[PROPERTIES] ✅ custom_id is set: {property_data.get('custom_id')}")
             
-            # FINAL CHECK: Convert all empty strings in integer fields to None before insert
-            # PostgreSQL cannot accept empty strings for integer fields
-            integer_fields = [
+            # FINAL CHECK: Convert all empty strings in ALL numeric fields to None before insert
+            # PostgreSQL cannot accept empty strings for numeric (integer or float) fields
+            # This is a comprehensive check that catches everything right before insert
+            all_numeric_fields_final = [
+                # Integer fields
                 'bedrooms', 'bathrooms', 'balconies', 'total_floors', 'floor', 'floor_count',
                 'borewells_number', 'total_units', 'units_per_floor', 'total_towers', 
                 'car_parking_slots', 'number_of_floors', 'age', 'available_floor',
                 'parking_slots', 'parking_covered', 'parking_open', 'parking_2_wheeler',
-                'car_parking', 'two_wheeler_parking', 'parking_stilt', 'total_floors_building'
+                'car_parking', 'two_wheeler_parking', 'parking_stilt', 'total_floors_building',
+                # Float/decimal fields
+                'price', 'monthly_rent', 'security_deposit', 'maintenance_charges',
+                'rate_per_sqft', 'rate_per_sqyd', 'area_sqyd', 'area_acres',
+                'carpet_area_sqft', 'built_up_area_sqft', 'plot_area_sqft', 'plot_area_sqyd',
+                'starting_price_per_unit', 'borewells_hp', 'distance_to_highway_km', 
+                'approach_road_width_ft', 'total_area_acres', 'road_width', 
+                'ceiling_height_ft', 'power_load_kva', 'total_builtup_sqft', 
+                'dimensions_length_ft', 'dimensions_breadth_ft', 'super_builtup_sqft'
             ]
             
-            for field in integer_fields:
+            for field in all_numeric_fields_final:
                 if field in property_data:
                     value = property_data[field]
+                    # Convert empty strings to None
                     if value == '' or value == 'NA' or (isinstance(value, str) and value.strip() == ''):
-                        property_data[field] = None
-                        print(f"[PROPERTIES] Converted empty string for integer field {field} to None")
+                        # Special handling for area_sqft (must not be None)
+                        if field == 'area_sqft':
+                            property_data[field] = 0
+                            print(f"[PROPERTIES] FINAL CHECK: Converted empty string for {field} to 0 (NOT NULL constraint)")
+                        else:
+                            property_data[field] = None
+                            print(f"[PROPERTIES] FINAL CHECK: Converted empty string for numeric field {field} to None")
+                    # Convert string numbers to actual numbers (if they're valid numbers)
+                    elif isinstance(value, str) and value.strip() != '':
+                        try:
+                            # Try to convert to float first (handles decimals)
+                            float_val = float(value)
+                            # If it's an integer field and the float is a whole number, convert to int
+                            integer_only_fields = ['bedrooms', 'bathrooms', 'balconies', 'total_floors', 'floor', 
+                                                  'floor_count', 'borewells_number', 'total_units', 'units_per_floor', 
+                                                  'total_towers', 'car_parking_slots', 'number_of_floors', 'age', 
+                                                  'available_floor', 'parking_slots', 'parking_covered', 'parking_open', 
+                                                  'parking_2_wheeler', 'car_parking', 'two_wheeler_parking', 
+                                                  'parking_stilt', 'total_floors_building']
+                            if field in integer_only_fields and float_val.is_integer():
+                                property_data[field] = int(float_val)
+                            else:
+                                property_data[field] = float_val
+                        except (ValueError, TypeError):
+                            # If conversion fails, set to None
+                            if field == 'area_sqft':
+                                property_data[field] = 0
+                            else:
+                                property_data[field] = None
+                            print(f"[PROPERTIES] FINAL CHECK: Failed to convert {field}='{value}' to number, set to None")
             
             print(f"[PROPERTIES] Attempting to insert property into database...")
             print(f"[PROPERTIES] Property ID: {property_id}")
