@@ -1916,13 +1916,16 @@ async def create_property(request: Request):
                     # Update each document to link to the property
                     for doc in user_docs:
                         try:
-                            await db.update("documents", doc["id"], {
+                            # Correct db.update signature: update(table, data, filters)
+                            await db.update("documents", {
                                 "entity_id": property_id,
                                 "updated_at": now
+                            }, {
+                                "id": doc["id"]
                             })
-                            print(f"[PROPERTIES] Linked image {doc.get('id')} to property {property_id}")
+                            print(f"[PROPERTIES] ✅ Linked image {doc.get('name')} (ID: {doc.get('id')[:8]}) to property {property_id[:8]}")
                         except Exception as link_error:
-                            print(f"[PROPERTIES] Error linking image {doc.get('id')}: {link_error}")
+                            print(f"[PROPERTIES] ❌ Error linking image {doc.get('id')}: {link_error}")
                 else:
                     print(f"[PROPERTIES] No pre-uploaded images found for user {user_id}")
         except Exception as link_images_error:

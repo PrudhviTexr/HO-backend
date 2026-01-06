@@ -425,8 +425,31 @@ async def get_seller_properties(
                     "assigned_at": property_data.get("assigned_at")
                 }
             
-            # Get property images from pre-fetched data
-            property_images = images_by_property.get(property_id, [])
+            # Get property images - PRIORITY: use images from property record first, then from documents
+            property_images_from_db = property_data.get("images", [])
+            
+            # Ensure it's a list
+            if not isinstance(property_images_from_db, list):
+                if isinstance(property_images_from_db, str):
+                    try:
+                        import json
+                        property_images_from_db = json.loads(property_images_from_db)
+                        if not isinstance(property_images_from_db, list):
+                            property_images_from_db = []
+                    except:
+                        property_images_from_db = []
+                else:
+                    property_images_from_db = []
+            
+            # Get images from documents table (if any)
+            property_images_from_docs = images_by_property.get(property_id, [])
+            
+            # PRIORITY: Use images from property record if available, otherwise use from documents
+            if property_images_from_db and len(property_images_from_db) > 0:
+                property_images = property_images_from_db
+            else:
+                property_images = property_images_from_docs
+            
             cover_image = cover_photos_by_property.get(property_id) or property_data.get("cover_image")
             
             # If no cover_image but we have images, use first image as cover_image (user request)
