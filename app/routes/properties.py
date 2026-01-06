@@ -1835,6 +1835,7 @@ async def create_property(request: Request):
                 if to_insert:
                     for section_data in to_insert:
                         await db.insert("property_sections", section_data)
+                    print(f"[PROPERTIES] Added {len(to_insert)} sections to property")
         
         # Link uploaded images to property
         # Images uploaded before property creation have entity_id = user_id
@@ -1869,7 +1870,6 @@ async def create_property(request: Request):
             import traceback
             print(traceback.format_exc())
             # Don't fail property creation if image linking fails
-                    print(f"[PROPERTIES] Added {len(to_insert)} sections to property")
         
         # Send property submission email to user
         try:
