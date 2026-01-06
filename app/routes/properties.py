@@ -341,16 +341,6 @@ async def get_properties(
         
         # Use search parameter if provided, otherwise use title (search takes precedence)
         search_title = search if search else title
-        # #region agent log
-        try:
-            from pathlib import Path
-            import json
-            log_path = Path(__file__).resolve().parent.parent.parent.parent / '.cursor' / 'debug.log'
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(log_path, 'a', encoding='utf-8') as f:
-                f.write(json.dumps({"id":f"log_props_req_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"properties.py:352","message":"Properties endpoint called","data":{"status":status,"featured":featured,"limit":limit,"city":city,"state":state,"property_type":property_type,"listing_type":listing_type,"hypothesisId":"D"},"sessionId":"debug-session","runId":"run1"}) + '\n')
-        except: pass
-        # #endregion
         
         # FOR LOCAL DEVELOPMENT: Completely bypass filters and query directly
         # This ensures properties are returned regardless of any filter issues
@@ -410,17 +400,6 @@ async def get_properties(
                     sample_featured = [str(p.get('featured')) for p in filtered_properties[:10]]
                     print(f"[PROPERTIES] Sample featured values (first 10): {sample_featured}")
                     
-                    # #region agent log
-                    try:
-                        from pathlib import Path
-                        import json
-                        log_path = Path(__file__).resolve().parent.parent.parent.parent / '.cursor' / 'debug.log'
-                        log_path.parent.mkdir(parents=True, exist_ok=True)
-                        with open(log_path, 'a', encoding='utf-8') as f:
-                            f.write(json.dumps({"id":f"log_props_before_featured_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"properties.py:402","message":"Before featured filter","data":{"before_count":before_count,"featured_distribution":{str(k):v for k,v in featured_status_counts.items()},"featured_filter":featured,"hypothesisId":"A"},"sessionId":"debug-session","runId":"run1"}) + '\n')
-                    except: pass
-                    # #endregion
-                    
                     # Apply filter - handle both boolean True and string "true"
                     # FastAPI converts "true" query param to boolean True, but handle both cases for robustness
                     if featured is True or featured == "true" or str(featured).lower() == 'true':
@@ -450,16 +429,6 @@ async def get_properties(
                         filtered_properties = [p for p in filtered_properties if p.get('featured') == featured]
                     
                     print(f"[PROPERTIES] After featured={featured} filter: {len(filtered_properties)} properties")
-                    # #region agent log
-                    try:
-                        from pathlib import Path
-                        import json
-                        log_path = Path(__file__).resolve().parent.parent.parent.parent / '.cursor' / 'debug.log'
-                        log_path.parent.mkdir(parents=True, exist_ok=True)
-                        with open(log_path, 'a', encoding='utf-8') as f:
-                            f.write(json.dumps({"id":f"log_props_after_featured_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"properties.py:410","message":"After featured filter","data":{"after_count":len(filtered_properties),"featured_filter":featured,"available_featured":list(set([str(p.get('featured')) for p in all_properties_direct[:10]])) if len(filtered_properties) == 0 else [],"hypothesisId":"A"},"sessionId":"debug-session","runId":"run1"}) + '\n')
-                    except: pass
-                    # #endregion
                     
                     # Log sample properties for debugging
                     if len(filtered_properties) > 0:
@@ -487,16 +456,6 @@ async def get_properties(
                         filtered_properties = [p for p in filtered_properties 
                                              if p.get('status', '').lower() == status.lower()]
                     print(f"[PROPERTIES] After status={status} filter: {len(filtered_properties)} properties (was {before_status_filter})")
-                    # #region agent log
-                    try:
-                        from pathlib import Path
-                        import json
-                        log_path = Path(__file__).resolve().parent.parent.parent.parent / '.cursor' / 'debug.log'
-                        log_path.parent.mkdir(parents=True, exist_ok=True)
-                        with open(log_path, 'a', encoding='utf-8') as f:
-                            f.write(json.dumps({"id":f"log_props_status_filter_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"properties.py:432","message":"Status filter applied","data":{"status_filter":status,"before_count":before_status_filter,"after_count":len(filtered_properties),"sample_statuses":[p.get('status') for p in filtered_properties[:5]] if filtered_properties else [],"hypothesisId":"B"},"sessionId":"debug-session","runId":"run1"}) + '\n')
-                    except: pass
-                    # #endregion
                 else:
                     # Default: Filter out sold/rented/withdrawn/inactive, but keep active, pending, and pending_unassigned
                     before_status_filter = len(filtered_properties)
@@ -545,16 +504,6 @@ async def get_properties(
                         filtered_properties = []
                 
                 print(f"[PROPERTIES] ✅ Returning {len(filtered_properties)} properties")
-                # #region agent log
-                try:
-                    from pathlib import Path
-                    import json
-                    log_path = Path(__file__).resolve().parent.parent.parent.parent / '.cursor' / 'debug.log'
-                    log_path.parent.mkdir(parents=True, exist_ok=True)
-                    with open(log_path, 'a', encoding='utf-8') as f:
-                        f.write(json.dumps({"id":f"log_props_return_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"properties.py:498","message":"Returning properties to client","data":{"count":len(filtered_properties),"featured_filter":featured,"status_filter":status,"sample_ids":[p.get('id') for p in filtered_properties[:3]] if filtered_properties else [],"hypothesisId":"D"},"sessionId":"debug-session","runId":"run1"}) + '\n')
-                except: pass
-                # #endregion
                 return filtered_properties
             else:
                 print(f"[PROPERTIES] ⚠️ Direct query returned empty - checking database...")
@@ -989,32 +938,6 @@ async def get_properties(
         for prop in filtered_properties:
             prop['formatted_pricing'] = _format_property_pricing(prop)
 
-        # #region agent log
-        import json
-        import time
-        log_path = ".cursor/debug.log"
-        log_entry = {
-            "location": "properties.py:992",
-            "message": "Properties query complete",
-            "data": {
-                "totalFiltered": len(filtered_properties),
-                "propertiesWithImages": len([p for p in filtered_properties if p.get('images') and len(p.get('images', [])) > 0]),
-                "propertiesWithoutImages": len([p for p in filtered_properties if not p.get('images') or len(p.get('images', [])) == 0]),
-                "statusFilter": status,
-                "samplePropertyIds": [p.get('id') for p in filtered_properties[:5]]
-            },
-            "timestamp": int(time.time() * 1000),
-            "sessionId": "debug-session",
-            "runId": "run1",
-            "hypothesisId": "C"
-        }
-        try:
-            with open(log_path, 'a', encoding='utf-8') as f:
-                f.write(json.dumps(log_entry) + '\n')
-        except:
-            pass
-        # #endregion
-        
         print(f"[PROPERTIES] Returning {len(filtered_properties)} filtered properties")
         
         # Cache the result (only for first page to avoid stale pagination)

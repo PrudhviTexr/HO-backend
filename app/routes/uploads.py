@@ -153,33 +153,7 @@ async def upload_file(
     The user's ID is automatically used as entity_id and uploaded_by if available.
     Also accepts API key authentication as fallback.
     """
-    import json
-    log_path = ".cursor/debug.log"
-    upload_start_time = dt.datetime.now(dt.timezone.utc).isoformat()
     try:
-        # #region agent log
-        log_entry = {
-            "location": "uploads.py:120",
-            "message": "upload_file REQUEST START",
-            "data": {
-                "fileName": file.filename,
-                "fileSize": file.size if hasattr(file, 'size') else 'unknown',
-                "contentType": file.content_type,
-                "entityType": entity_type,
-                "entityId": entity_id,
-                "documentCategory": document_category
-            },
-            "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
-            "sessionId": "debug-session",
-            "runId": "run1",
-            "hypothesisId": "E"
-        }
-        try:
-            async with aiofiles.open(log_path, 'a', encoding='utf-8') as f:
-                await f.write(json.dumps(log_entry) + '\n')
-        except:
-            pass
-        # #endregion
         current_user_id = claims.get("sub") if claims else None
         
         # Check for API key as fallback if no user authentication
@@ -273,27 +247,6 @@ async def upload_file(
             # Prefer public_url or url over file_path (file_path is storage path, not public URL)
             file_url = result_doc.get('url') or result_doc.get('public_url') or result_doc.get('file_path')
             print(f"[UPLOAD] Returning URL to frontend: {file_url}")
-            # #region agent log
-            log_entry = {
-                "location": "uploads.py:235",
-                "message": "upload_file SUCCESS",
-                "data": {
-                    "fileName": file.filename,
-                    "url": file_url,
-                    "entityId": final_entity_id,
-                    "uploadDuration": (dt.datetime.now(dt.timezone.utc) - dt.datetime.fromisoformat(upload_start_time.replace('Z', '+00:00'))).total_seconds() * 1000
-                },
-                "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
-                "sessionId": "debug-session",
-                "runId": "run1",
-                "hypothesisId": "E"
-            }
-            try:
-                with open(log_path, 'a', encoding='utf-8') as f:
-                    f.write(json.dumps(log_entry) + '\n')
-            except:
-                pass
-            # #endregion
             return {
                 "success": True, 
                 "id": result_doc.get('id'), 
@@ -302,67 +255,11 @@ async def upload_file(
                 "document": result_doc
             }
         else:
-            # #region agent log
-            log_entry = {
-                "location": "uploads.py:250",
-                "message": "upload_file FAILED - no result",
-                "data": {"fileName": file.filename},
-                "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
-                "sessionId": "debug-session",
-                "runId": "run1",
-                "hypothesisId": "E"
-            }
-            try:
-                with open(log_path, 'a', encoding='utf-8') as f:
-                    f.write(json.dumps(log_entry) + '\n')
-            except:
-                pass
-            # #endregion
             raise HTTPException(status_code=500, detail="Failed to get document details after upload.")
 
-    except HTTPException as http_err:
-        # #region agent log
-        log_entry = {
-            "location": "uploads.py:240",
-            "message": "upload_file HTTPException",
-            "data": {
-                "fileName": file.filename if file else 'unknown',
-                "statusCode": http_err.status_code,
-                "detail": str(http_err.detail)
-            },
-            "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
-            "sessionId": "debug-session",
-            "runId": "run1",
-            "hypothesisId": "E"
-        }
-        try:
-            with open(log_path, 'a', encoding='utf-8') as f:
-                f.write(json.dumps(log_entry) + '\n')
-        except:
-            pass
-        # #endregion
+    except HTTPException:
         raise
     except Exception as e:
-        # #region agent log
-        log_entry = {
-            "location": "uploads.py:260",
-            "message": "upload_file EXCEPTION",
-            "data": {
-                "fileName": file.filename if file else 'unknown',
-                "error": str(e),
-                "errorType": type(e).__name__
-            },
-            "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
-            "sessionId": "debug-session",
-            "runId": "run1",
-            "hypothesisId": "E"
-        }
-        try:
-            with open(log_path, 'a', encoding='utf-8') as f:
-                f.write(json.dumps(log_entry) + '\n')
-        except:
-            pass
-        # #endregion
         print(f"[UPLOAD] User upload error: {e}")
         raise HTTPException(status_code=500, detail="Failed to upload file")
 

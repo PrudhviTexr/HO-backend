@@ -1084,7 +1084,159 @@ async def get_agent_properties(
             assigned_agent_id_count = len([p for p in unique_properties if p.get("assigned_agent_id") == user_id])
             print(f"[AGENT] Property assignment breakdown - agent_id: {agent_id_count}, assigned_agent_id: {assigned_agent_id_count}")
         
-        response = {"success": True, "properties": paginated_properties, "total": len(unique_properties)}
+        # Fetch images from documents table for all properties (similar to seller endpoint)
+        property_ids = [p.get("id") for p in paginated_properties if p.get("id")]
+        images_by_property = {}
+        cover_photos_by_property = {}
+        
+        if property_ids:
+            try:
+                # #region agent log
+                log_entry = {
+                    "location": "agent.py:1087",
+                    "message": "Fetching property images from documents",
+                    "data": {
+                        "propertyCount": len(property_ids),
+                        "propertyIds": [pid[:8] for pid in property_ids[:5]]
+                    },
+                    "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "A"
+                }
+                try:
+                    with open(".cursor/debug.log", 'a', encoding='utf-8') as f:
+                        f.write(json.dumps(log_entry) + '\n')
+                except:
+                    pass
+                # #endregion
+                
+                images_all = await db.select("documents", filters={"entity_type": "property", "entity_id": {"in": property_ids}})
+                
+                # #region agent log
+                log_entry2 = {
+                    "location": "agent.py:1100",
+                    "message": "Images fetched from documents",
+                    "data": {
+                        "totalDocuments": len(images_all or []),
+                        "imageDocuments": len([d for d in (images_all or []) if d.get("file_type", "").startswith("image/")])
+                    },
+                    "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "A"
+                }
+                try:
+                    with open(".cursor/debug.log", 'a', encoding='utf-8') as f:
+                        f.write(json.dumps(log_entry2) + '\n')
+                except:
+                    pass
+                # #endregion
+                
+                for doc in images_all or []:
+                    prop_id = doc.get("entity_id")
+                    file_type = doc.get("file_type", "")
+                    doc_category = doc.get("document_category", "")
+                    if prop_id and file_type.startswith("image/"):
+                        image_url = doc.get("file_path") or doc.get("url") or doc.get("public_url")
+                        if image_url:
+                            # If it's not already a full URL, convert file_path to public URL
+                            if not (image_url.startswith('http://') or image_url.startswith('https://')):
+                                original_path = image_url
+                                try:
+                                    # Property images are in 'property-images' bucket
+                                    public_url = db.supabase_client.storage.from_('property-images').get_public_url(image_url)
+                                    image_url = public_url
+                                except Exception as url_error:
+                                    print(f"[AGENT] Failed to get public URL for {image_url}: {url_error}")
+                                    # Try documents bucket as fallback
+                                    try:
+                                        public_url = db.supabase_client.storage.from_('documents').get_public_url(image_url)
+                                        image_url = public_url
+                                    except:
+                                        # Use file_path as-is if conversion fails
+                                        pass
+                            
+                            # Only add if it's a valid HTTP/HTTPS URL
+                            if image_url.startswith('http://') or image_url.startswith('https://'):
+                                # Check if this is a cover photo
+                                if doc_category == 'cover_photo':
+                                    cover_photos_by_property[prop_id] = image_url
+                                else:
+                                    # Regular property image
+                                    if prop_id not in images_by_property:
+                                        images_by_property[prop_id] = []
+                                    images_by_property[prop_id].append(image_url)
+            except Exception as img_error:
+                print(f"[AGENT] Error fetching images: {img_error}")
+                # #region agent log
+                log_entry3 = {
+                    "location": "agent.py:1140",
+                    "message": "Error fetching images",
+                    "data": {
+                        "error": str(img_error)
+                    },
+                    "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "A"
+                }
+                try:
+                    with open(".cursor/debug.log", 'a', encoding='utf-8') as f:
+                        f.write(json.dumps(log_entry3) + '\n')
+                except:
+                    pass
+                # #endregion
+        
+        # Enhance properties with images
+        enhanced_properties = []
+        for property_data in paginated_properties:
+            property_id = property_data.get("id")
+            
+            # Get property images from pre-fetched data
+            property_images = images_by_property.get(property_id, [])
+            cover_image = cover_photos_by_property.get(property_id) or property_data.get("cover_image")
+            
+            # If no cover_image but we have images, use first image as cover_image (user request)
+            if not cover_image and property_images and len(property_images) > 0:
+                cover_image = property_images[0]
+            
+            # If cover_image exists, add it to the beginning of images array
+            if cover_image and cover_image not in property_images:
+                property_images = [cover_image] + property_images
+            
+            # #region agent log
+            log_entry4 = {
+                "location": "agent.py:1200",
+                "message": "Property enhanced with images",
+                "data": {
+                    "propertyId": property_id[:8] if property_id else "N/A",
+                    "imagesCount": len(property_images),
+                    "hasCoverImage": bool(cover_image),
+                    "coverImageSource": "cover_photos_by_property" if cover_photos_by_property.get(property_id) else ("first_image" if not cover_photos_by_property.get(property_id) and property_images else "property_data"),
+                    "firstImageUrl": property_images[0] if property_images else None
+                },
+                "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
+                "sessionId": "debug-session",
+                "runId": "run1",
+                "hypothesisId": "A"
+            }
+            try:
+                with open(".cursor/debug.log", 'a', encoding='utf-8') as f:
+                    f.write(json.dumps(log_entry4) + '\n')
+            except:
+                pass
+            # #endregion
+            
+            enhanced_property = {
+                **property_data,
+                "images": property_images,
+                "cover_image": cover_image or property_data.get("cover_image")
+            }
+            
+            enhanced_properties.append(enhanced_property)
+        
+        response = {"success": True, "properties": enhanced_properties, "total": len(unique_properties)}
         print(f"[AGENT] Final response - success: {response['success']}, total: {response['total']}, properties array length: {len(response['properties'])}")
         
         return response

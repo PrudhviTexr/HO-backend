@@ -188,12 +188,33 @@ async def get_seller_properties(
         
         images_by_property = {}
         cover_photos_by_property = {}
+        # #region agent log
+        import json
+        log_entry = {
+            "location": "seller.py:189",
+            "message": "Processing documents for images",
+            "data": {
+                "totalDocuments": len(images_all or []),
+                "propertyIds": [p.get("id")[:8] for p in properties_list[:5]] if properties_list else []
+            },
+            "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
+            "sessionId": "debug-session",
+            "runId": "run1",
+            "hypothesisId": "F"
+        }
+        try:
+            with open(".cursor/debug.log", 'a', encoding='utf-8') as f:
+                f.write(json.dumps(log_entry) + '\n')
+        except:
+            pass
+        # #endregion
+        
         for doc in images_all or []:
             prop_id = doc.get("entity_id")
             file_type = doc.get("file_type", "")
             doc_category = doc.get("document_category", "")
             if prop_id and file_type.startswith("image/"):
-                image_url = doc.get("file_path") or doc.get("url")
+                image_url = doc.get("file_path") or doc.get("url") or doc.get("public_url")
                 if image_url:
                     # If it's not already a full URL, convert file_path to public URL
                     if not (image_url.startswith('http://') or image_url.startswith('https://')):
@@ -202,48 +223,8 @@ async def get_seller_properties(
                             # Property images are in 'property-images' bucket
                             public_url = db.supabase_client.storage.from_('property-images').get_public_url(image_url)
                             image_url = public_url
-                            # #region agent log
-                            log_entry = {
-                                "location": "seller.py:201",
-                                "message": "Image URL converted successfully",
-                                "data": {
-                                    "originalPath": original_path,
-                                    "publicUrl": image_url,
-                                    "bucket": "property-images"
-                                },
-                                "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
-                                "sessionId": "debug-session",
-                                "runId": "run1",
-                                "hypothesisId": "B"
-                            }
-                            try:
-                                with open(".cursor/debug.log", 'a', encoding='utf-8') as f:
-                                    f.write(json.dumps(log_entry) + '\n')
-                            except:
-                                pass
-                            # #endregion
                         except Exception as url_error:
                             print(f"[SELLER] Failed to get public URL for {image_url}: {url_error}")
-                            # #region agent log
-                            log_entry = {
-                                "location": "seller.py:220",
-                                "message": "Image URL conversion FAILED",
-                                "data": {
-                                    "originalPath": original_path,
-                                    "error": str(url_error),
-                                    "bucket": "property-images"
-                                },
-                                "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
-                                "sessionId": "debug-session",
-                                "runId": "run1",
-                                "hypothesisId": "B"
-                            }
-                            try:
-                                with open(".cursor/debug.log", 'a', encoding='utf-8') as f:
-                                    f.write(json.dumps(log_entry) + '\n')
-                            except:
-                                pass
-                            # #endregion
                             # Try documents bucket as fallback
                             try:
                                 public_url = db.supabase_client.storage.from_('documents').get_public_url(image_url)
@@ -252,14 +233,37 @@ async def get_seller_properties(
                                 # Use file_path as-is if conversion fails
                                 pass
                     
-                    # Check if this is a cover photo
-                    if doc_category == 'cover_photo':
-                        cover_photos_by_property[prop_id] = image_url
-                    else:
-                        # Regular property image
-                        if prop_id not in images_by_property:
-                            images_by_property[prop_id] = []
-                        images_by_property[prop_id].append(image_url)
+                    # Only add if it's a valid HTTP/HTTPS URL
+                    if image_url.startswith('http://') or image_url.startswith('https://'):
+                        # Check if this is a cover photo
+                        if doc_category == 'cover_photo':
+                            cover_photos_by_property[prop_id] = image_url
+                        else:
+                            # Regular property image
+                            if prop_id not in images_by_property:
+                                images_by_property[prop_id] = []
+                            images_by_property[prop_id].append(image_url)
+        
+        # #region agent log
+        log_entry2 = {
+            "location": "seller.py:230",
+            "message": "Images processed",
+            "data": {
+                "propertiesWithImages": len(images_by_property),
+                "propertiesWithCoverPhotos": len(cover_photos_by_property),
+                "samplePropertyIds": list(images_by_property.keys())[:5] if images_by_property else []
+            },
+            "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
+            "sessionId": "debug-session",
+            "runId": "run1",
+            "hypothesisId": "F"
+        }
+        try:
+            with open(".cursor/debug.log", 'a', encoding='utf-8') as f:
+                f.write(json.dumps(log_entry2) + '\n')
+        except:
+            pass
+        # #endregion
         
         agents_by_id = {}
         for agent in agents_all or []:
@@ -271,31 +275,6 @@ async def get_seller_properties(
         enhanced_properties = []
         for property_data in properties_list:
             property_id = property_data.get("id")
-            
-            # #region agent log
-            log_path = ".cursor/debug.log"
-            log_entry = {
-                "location": "seller.py:230",
-                "message": "Processing property for seller",
-                "data": {
-                    "propertyId": property_id,
-                    "propertyTitle": property_data.get("title"),
-                    "status": property_data.get("status"),
-                    "hasImagesInDoc": property_id in images_by_property,
-                    "imageCount": len(images_by_property.get(property_id, [])),
-                    "hasCoverPhoto": property_id in cover_photos_by_property
-                },
-                "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
-                "sessionId": "debug-session",
-                "runId": "run1",
-                "hypothesisId": "A"
-            }
-            try:
-                with open(log_path, 'a', encoding='utf-8') as f:
-                    f.write(json.dumps(log_entry) + '\n')
-            except:
-                pass
-            # #endregion
             
             # Get counts from pre-fetched data
             inquiries = inquiries_by_property.get(property_id, [])
@@ -324,28 +303,32 @@ async def get_seller_properties(
             property_images = images_by_property.get(property_id, [])
             cover_image = cover_photos_by_property.get(property_id) or property_data.get("cover_image")
             
+            # If no cover_image but we have images, use first image as cover_image (user request)
+            if not cover_image and property_images and len(property_images) > 0:
+                cover_image = property_images[0]
+            
             # If cover_image exists, add it to the beginning of images array
             if cover_image and cover_image not in property_images:
                 property_images = [cover_image] + property_images
             
             # #region agent log
-            log_entry2 = {
-                "location": "seller.py:290",
+            log_entry3 = {
+                "location": "seller.py:265",
                 "message": "Property enhanced with images",
                 "data": {
-                    "propertyId": property_id,
-                    "imagesAssigned": len(property_images),
-                    "imageUrls": property_images[:3],  # First 3 URLs
-                    "hasCoverImage": bool(cover_image)
+                    "propertyId": property_id[:8] if property_id else "N/A",
+                    "imagesCount": len(property_images),
+                    "hasCoverImage": bool(cover_image),
+                    "coverImageSource": "cover_photos_by_property" if cover_photos_by_property.get(property_id) else ("first_image" if not cover_photos_by_property.get(property_id) and property_images else "property_data")
                 },
                 "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
                 "sessionId": "debug-session",
                 "runId": "run1",
-                "hypothesisId": "A"
+                "hypothesisId": "F"
             }
             try:
-                with open(log_path, 'a', encoding='utf-8') as f:
-                    f.write(json.dumps(log_entry2) + '\n')
+                with open(".cursor/debug.log", 'a', encoding='utf-8') as f:
+                    f.write(json.dumps(log_entry3) + '\n')
             except:
                 pass
             # #endregion
