@@ -55,13 +55,34 @@ async def upload_file_to_storage(
 
     await ensure_bucket_exists(bucket)
 
-    try:
-        await db.upload_to_storage(bucket, object_path, content, content_type=file.content_type)
-    except Exception as e:
-        print(f"[UPLOAD] Storage upload failed: {e}")
-        import traceback
-        print(f"[UPLOAD] Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"Failed to upload to storage: {str(e)}")
+    # Retry logic for storage uploads to handle "Resource temporarily unavailable" errors
+    max_retries = 3
+    retry_delay = 1.0  # Start with 1 second
+    
+    for attempt in range(max_retries):
+        try:
+            await db.upload_to_storage(bucket, object_path, content, content_type=file.content_type)
+            break  # Success, exit retry loop
+        except Exception as e:
+            error_str = str(e)
+            is_retryable = (
+                "Resource temporarily unavailable" in error_str or
+                "temporarily unavailable" in error_str.lower() or
+                "[Errno 11]" in error_str or
+                "timeout" in error_str.lower()
+            )
+            
+            if is_retryable and attempt < max_retries - 1:
+                delay = retry_delay * (2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+                print(f"[UPLOAD] Storage upload failed (attempt {attempt + 1}/{max_retries}), retrying in {delay}s: {error_str}")
+                import asyncio
+                await asyncio.sleep(delay)
+                continue
+            else:
+                print(f"[UPLOAD] Storage upload failed after {attempt + 1} attempts: {e}")
+                import traceback
+                print(f"[UPLOAD] Traceback: {traceback.format_exc()}")
+                raise HTTPException(status_code=500, detail=f"Failed to upload to storage: {str(e)}")
 
     # Get public URL
     try:
