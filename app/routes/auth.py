@@ -309,7 +309,6 @@ async def login(payload: LoginRequest, response: Response, role: Optional[str] =
                 active_roles = await UserRoleService.get_active_user_roles(user_id)
 
             except Exception as role_error:
-
                 active_roles = [user_type]  # Fallback to primary role
             
             
@@ -335,6 +334,7 @@ async def login(payload: LoginRequest, response: Response, role: Optional[str] =
             try:
                 await db.insert("refresh_tokens", refresh_record)
             except Exception as e:
+                pass
 
             response.set_cookie(
                 "refresh_token",
@@ -373,16 +373,11 @@ async def login(payload: LoginRequest, response: Response, role: Optional[str] =
                 "message": "Login successful"
             }
         except Exception as token_error:
-
-            import traceback
-            
             raise HTTPException(status_code=500, detail="Failed to generate authentication tokens")
         
     except HTTPException:
         raise
     except Exception as e:
-
-
         raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
 
 @router.get("/me")
@@ -423,7 +418,6 @@ async def get_profile(request: Request) -> Dict[str, Any]:
             )
         except asyncio.TimeoutError:
             # If database is slow, return cached profile if available, otherwise error
-
             # Try to return basic info from JWT token if database is unavailable
             return {
                 "id": user_id,
@@ -499,6 +493,7 @@ async def get_profile(request: Request) -> Dict[str, Any]:
                     specialization = agent_profile.get("specialization")
             except (asyncio.TimeoutError, Exception) as agent_profile_error:
                 # Continue without agent profile data - don't fail the request
+                pass
         
         # Build response with ALL fields from the database
         response_data = {
@@ -610,7 +605,6 @@ async def update_profile(request: Request, updates: UpdateProfileRequest) -> Dic
     except HTTPException:
         raise
     except Exception as e:
-
         raise HTTPException(status_code=500, detail=f"Failed to update profile: {str(e)}")
 
 
@@ -626,7 +620,6 @@ async def send_otp(payload: SendOTPRequest) -> Dict[str, Any]:
         return {"success": True, "sent": True, "otp": token}
         
     except Exception as e:
-
         raise HTTPException(status_code=500, detail=f"Failed to send OTP: {str(e)}")
 
 @router.post("/verify-otp")
@@ -646,7 +639,6 @@ async def verify_otp(payload: VerifyOTPRequest) -> Dict[str, Any]:
     except HTTPException:
         raise
     except Exception as e:
-
         raise HTTPException(status_code=500, detail=f"Failed to verify OTP: {str(e)}")
 
 @router.get("/verify-email/{token}")
@@ -676,7 +668,6 @@ async def verify_email(token: str) -> Dict[str, Any]:
 
                 raise HTTPException(status_code=400, detail="Verification token has expired")
         except Exception as parse_error:
-
             raise HTTPException(status_code=400, detail="Invalid token format")
         
         if not user_id:
@@ -722,12 +713,13 @@ async def verify_email(token: str) -> Dict[str, Any]:
             }
             await db.insert("user_activity_logs", log_data)
         except Exception as log_err:
+            pass
 
         # Delete the used token
         try:
             await db.delete("email_verification_tokens", {"token": token})
         except Exception as e:
-
+            pass
 
         return {
             "success": True,
@@ -787,7 +779,6 @@ async def verify_email_otp(payload: Dict[str, Any]) -> Dict[str, Any]:
         except HTTPException:
             raise
         except Exception as otp_error:
-
             raise HTTPException(status_code=400, detail="Invalid or expired OTP")
         
         # Update user as verified
@@ -813,7 +804,7 @@ async def verify_email_otp(payload: Dict[str, Any]) -> Dict[str, Any]:
             }
             await db.insert("user_activity_logs", log_data)
         except Exception as log_err:
-
+            pass
 
         return {
             "success": True,
@@ -840,7 +831,6 @@ async def list_tokens() -> Dict[str, Any]:
         tokens = await db.select("email_verification_tokens")
         return {"success": True, "tokens": tokens}
     except Exception as e:
-
         raise HTTPException(status_code=500, detail=f"Failed to list tokens: {str(e)}")
 
 @router.post("/resend-verification")
@@ -882,14 +872,12 @@ async def resend_verification_email(request: Request) -> Dict[str, Any]:
                 "message": "Verification email sent successfully! Please check your inbox."
             }
         except Exception as otp_error:
-
             return {
                 "success": False,
                 "error": "Failed to send verification email. Please try again."
             }
         
     except Exception as e:
-
         return {
             "success": False,
             "error": f"Failed to resend verification email: {str(e)}"
@@ -972,7 +960,6 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
             active_roles = await UserRoleService.get_active_user_roles(user_id)
             role_info = await UserRoleService.get_user_role_info(user_id)
         except Exception as role_error:
-
             active_roles = [user.get("user_type", "buyer")]
             role_info = {
                 "active_roles": active_roles,
@@ -1001,7 +988,6 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
     except HTTPException:
         raise
     except Exception as e:
-
         raise HTTPException(status_code=500, detail=f"Failed to get user information: {str(e)}")
 
 
@@ -1149,8 +1135,11 @@ async def request_additional_role(request: Request) -> Dict[str, Any]:
                         html=user_email_html
                     )
                     if email_result.get("status") == "sent":
+                        pass
                     else:
+                        pass
                 except Exception as email_error:
+                    pass
 
                 # Send notification to admins
                 try:
@@ -1221,10 +1210,14 @@ async def request_additional_role(request: Request) -> Dict[str, Any]:
                                 html=admin_email_html
                             )
                             if email_result.get("status") == "sent":
+                                pass
                             else:
+                                pass
                         except Exception as admin_email_error:
+                            pass
 
                 except Exception as admin_notify_error:
+                    pass
 
                 return {
                     "success": True,
@@ -1237,7 +1230,6 @@ async def request_additional_role(request: Request) -> Dict[str, Any]:
                 }
                 
         except Exception as role_error:
-
             import traceback
             return {
                 "success": False,
@@ -1247,7 +1239,6 @@ async def request_additional_role(request: Request) -> Dict[str, Any]:
     except HTTPException:
         raise
     except Exception as e:
-
         import traceback
         raise HTTPException(status_code=500, detail=f"Failed to submit role request: {str(e)}")
 
@@ -1312,7 +1303,6 @@ async def forgot_password(request: Request) -> Dict[str, Any]:
     except HTTPException:
         raise
     except Exception as e:
-
         raise HTTPException(status_code=500, detail="Failed to process password reset request")
 
 
@@ -1356,7 +1346,7 @@ async def reset_password(request: Request) -> Dict[str, Any]:
         # Hash new password
         from ..core.crypto import get_password_hash
         from ..services.email import send_email
-        from ..config import settings
+        from ..core.config import settings
         password_hash = get_password_hash(new_password)
         
         # Update user password
@@ -1386,6 +1376,7 @@ async def reset_password(request: Request) -> Dict[str, Any]:
             raise ValueError("SITE_URL environment variable is required for production deployment")
         # Ensure we use HTTPS in production
         if not site_url.startswith("https://") and not site_url.startswith("http://localhost"):
+            pass
 
         login_url = f"{site_url}{role['url']}"
         
@@ -1517,8 +1508,8 @@ async def reset_password(request: Request) -> Dict[str, Any]:
             
 
         except Exception as email_error:
-
             # Don't fail password reset if email fails
+            pass
         
         return {
             "success": True,
@@ -1529,7 +1520,6 @@ async def reset_password(request: Request) -> Dict[str, Any]:
     except HTTPException:
         raise
     except Exception as e:
-
         raise HTTPException(status_code=500, detail="Failed to reset password")
 
 @router.post("/change-password")
@@ -1539,7 +1529,7 @@ async def change_password(request: Request) -> Dict[str, Any]:
         from ..core.security import get_current_user_claims
         from ..core.crypto import verify_password, get_password_hash
         from ..services.email import send_email
-        from ..config import settings
+        from ..core.config import settings
         
         claims = get_current_user_claims(request)
         if not claims:
@@ -1609,8 +1599,10 @@ async def change_password(request: Request) -> Dict[str, Any]:
                 raise ValueError("SITE_URL environment variable is required for production deployment")
             # Ensure we use HTTPS in production
             if not site_url.startswith("https://") and not site_url.startswith("http://localhost"):
+                pass
 
             login_url = f"{site_url}{role['url']}"
+            support_email = getattr(settings, 'SUPPORT_EMAIL', 'support@homeandown.com')
             
             email_html = f"""
             <!DOCTYPE html>
@@ -1730,8 +1722,8 @@ async def change_password(request: Request) -> Dict[str, Any]:
             )
 
         except Exception as email_error:
-
             # Don't fail password change if email fails
+            pass
         
         return {
             "success": True,
@@ -1741,5 +1733,4 @@ async def change_password(request: Request) -> Dict[str, Any]:
     except HTTPException:
         raise
     except Exception as e:
-
         raise HTTPException(status_code=500, detail=f"Failed to change password: {str(e)}")
