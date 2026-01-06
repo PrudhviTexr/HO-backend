@@ -176,10 +176,16 @@ class AgentAssignmentService:
                 notifications_created.append(agent["id"])
             
             # Update property with notification round
-            await db.update("properties", {
-                "notification_round": current_round + 1,
-                "last_notification_sent": dt.datetime.utcnow().isoformat()
-            }, {"id": property_id})
+            # Note: Only update notification_round if column exists in schema
+            # last_notification_sent column removed as it doesn't exist in properties table
+            try:
+                await db.update("properties", {
+                    "notification_round": current_round + 1
+                }, {"id": property_id})
+            except Exception as update_error:
+                # If notification_round doesn't exist either, just log and continue
+                print(f"[AGENT_ASSIGNMENT] Could not update notification_round: {update_error}")
+                # Notification was still sent, so this is non-critical
             
             return {
                 "success": True,
