@@ -5,6 +5,7 @@ from ..core.security import get_current_user_claims
 import datetime as dt
 import traceback
 import uuid
+import json
 
 router = APIRouter()
 
@@ -196,12 +197,53 @@ async def get_seller_properties(
                 if image_url:
                     # If it's not already a full URL, convert file_path to public URL
                     if not (image_url.startswith('http://') or image_url.startswith('https://')):
+                        original_path = image_url
                         try:
                             # Property images are in 'property-images' bucket
                             public_url = db.supabase_client.storage.from_('property-images').get_public_url(image_url)
                             image_url = public_url
+                            # #region agent log
+                            log_entry = {
+                                "location": "seller.py:201",
+                                "message": "Image URL converted successfully",
+                                "data": {
+                                    "originalPath": original_path,
+                                    "publicUrl": image_url,
+                                    "bucket": "property-images"
+                                },
+                                "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
+                                "sessionId": "debug-session",
+                                "runId": "run1",
+                                "hypothesisId": "B"
+                            }
+                            try:
+                                with open(".cursor/debug.log", 'a', encoding='utf-8') as f:
+                                    f.write(json.dumps(log_entry) + '\n')
+                            except:
+                                pass
+                            # #endregion
                         except Exception as url_error:
                             print(f"[SELLER] Failed to get public URL for {image_url}: {url_error}")
+                            # #region agent log
+                            log_entry = {
+                                "location": "seller.py:220",
+                                "message": "Image URL conversion FAILED",
+                                "data": {
+                                    "originalPath": original_path,
+                                    "error": str(url_error),
+                                    "bucket": "property-images"
+                                },
+                                "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
+                                "sessionId": "debug-session",
+                                "runId": "run1",
+                                "hypothesisId": "B"
+                            }
+                            try:
+                                with open(".cursor/debug.log", 'a', encoding='utf-8') as f:
+                                    f.write(json.dumps(log_entry) + '\n')
+                            except:
+                                pass
+                            # #endregion
                             # Try documents bucket as fallback
                             try:
                                 public_url = db.supabase_client.storage.from_('documents').get_public_url(image_url)
@@ -229,6 +271,31 @@ async def get_seller_properties(
         enhanced_properties = []
         for property_data in properties_list:
             property_id = property_data.get("id")
+            
+            # #region agent log
+            log_path = ".cursor/debug.log"
+            log_entry = {
+                "location": "seller.py:230",
+                "message": "Processing property for seller",
+                "data": {
+                    "propertyId": property_id,
+                    "propertyTitle": property_data.get("title"),
+                    "status": property_data.get("status"),
+                    "hasImagesInDoc": property_id in images_by_property,
+                    "imageCount": len(images_by_property.get(property_id, [])),
+                    "hasCoverPhoto": property_id in cover_photos_by_property
+                },
+                "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
+                "sessionId": "debug-session",
+                "runId": "run1",
+                "hypothesisId": "A"
+            }
+            try:
+                with open(log_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps(log_entry) + '\n')
+            except:
+                pass
+            # #endregion
             
             # Get counts from pre-fetched data
             inquiries = inquiries_by_property.get(property_id, [])
@@ -260,6 +327,28 @@ async def get_seller_properties(
             # If cover_image exists, add it to the beginning of images array
             if cover_image and cover_image not in property_images:
                 property_images = [cover_image] + property_images
+            
+            # #region agent log
+            log_entry2 = {
+                "location": "seller.py:290",
+                "message": "Property enhanced with images",
+                "data": {
+                    "propertyId": property_id,
+                    "imagesAssigned": len(property_images),
+                    "imageUrls": property_images[:3],  # First 3 URLs
+                    "hasCoverImage": bool(cover_image)
+                },
+                "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
+                "sessionId": "debug-session",
+                "runId": "run1",
+                "hypothesisId": "A"
+            }
+            try:
+                with open(log_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps(log_entry2) + '\n')
+            except:
+                pass
+            # #endregion
             
             enhanced_property = {
                 **property_data,

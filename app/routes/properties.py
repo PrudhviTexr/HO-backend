@@ -989,6 +989,32 @@ async def get_properties(
         for prop in filtered_properties:
             prop['formatted_pricing'] = _format_property_pricing(prop)
 
+        # #region agent log
+        import json
+        import time
+        log_path = ".cursor/debug.log"
+        log_entry = {
+            "location": "properties.py:992",
+            "message": "Properties query complete",
+            "data": {
+                "totalFiltered": len(filtered_properties),
+                "propertiesWithImages": len([p for p in filtered_properties if p.get('images') and len(p.get('images', [])) > 0]),
+                "propertiesWithoutImages": len([p for p in filtered_properties if not p.get('images') or len(p.get('images', [])) == 0]),
+                "statusFilter": status,
+                "samplePropertyIds": [p.get('id') for p in filtered_properties[:5]]
+            },
+            "timestamp": int(time.time() * 1000),
+            "sessionId": "debug-session",
+            "runId": "run1",
+            "hypothesisId": "C"
+        }
+        try:
+            with open(log_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(log_entry) + '\n')
+        except:
+            pass
+        # #endregion
+        
         print(f"[PROPERTIES] Returning {len(filtered_properties)} filtered properties")
         
         # Cache the result (only for first page to avoid stale pagination)
