@@ -138,6 +138,31 @@ async def get_seller_properties(
         # Batch fetch inquiries, bookings, images, and agents in parallel
         import asyncio
         
+        # #region agent log
+        log_query = {
+            "location": "seller.py:138",
+            "message": "Querying documents for properties",
+            "data": {
+                "propertyCount": len(property_ids),
+                "propertyIds": [pid[:8] for pid in property_ids[:5]] if property_ids else [],
+                "queryFilter": {"entity_type": "property", "entity_id": {"in": property_ids[:3] if property_ids else []}}
+            },
+            "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
+            "sessionId": "debug-session",
+            "runId": "run1",
+            "hypothesisId": "F"
+        }
+        try:
+            from pathlib import Path
+            log_path = Path(__file__).resolve().parent.parent.parent.parent / '.cursor' / 'debug.log'
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(log_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(log_query) + '\n')
+        except Exception as log_err:
+            print(f"[SELLER] Failed to write log: {log_err}")
+        # #endregion
+        print(f"[SELLER] Querying documents for {len(property_ids)} properties")
+        
         # Execute all queries in parallel
         try:
             tasks = []
@@ -163,10 +188,38 @@ async def get_seller_properties(
                 bookings_all = results[1] if not isinstance(results[1], Exception) else []
                 images_all = results[2] if not isinstance(results[2], Exception) else []
                 agents_all = results[3] if len(results) > 3 and not isinstance(results[3], Exception) else []
+                
+                # #region agent log
+                log_results = {
+                    "location": "seller.py:165",
+                    "message": "Documents query results",
+                    "data": {
+                        "totalDocuments": len(images_all or []),
+                        "imageDocuments": len([d for d in (images_all or []) if d.get("file_type", "").startswith("image/")]),
+                        "sampleEntityIds": [d.get("entity_id")[:8] for d in (images_all or [])[:5]],
+                        "sampleFileTypes": [d.get("file_type") for d in (images_all or [])[:5]]
+                    },
+                    "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "F"
+                }
+                try:
+                    from pathlib import Path
+                    log_path = Path(__file__).resolve().parent.parent.parent.parent / '.cursor' / 'debug.log'
+                    log_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(log_path, 'a', encoding='utf-8') as f:
+                        f.write(json.dumps(log_results) + '\n')
+                except Exception as log_err:
+                    print(f"[SELLER] Failed to write log: {log_err}")
+                # #endregion
+                print(f"[SELLER] Found {len(images_all or [])} total documents, {len([d for d in (images_all or []) if d.get('file_type', '').startswith('image/')])} image documents")
             else:
                 agents_all = []
         except Exception as batch_error:
             print(f"[SELLER] Batch fetch error: {batch_error}")
+            import traceback
+            print(traceback.format_exc())
             inquiries_all, bookings_all, images_all, agents_all = [], [], [], []
         
         # Group data by property_id for O(1) lookup
@@ -190,12 +243,16 @@ async def get_seller_properties(
         cover_photos_by_property = {}
         # #region agent log
         import json
+        from pathlib import Path
+        log_path = Path(__file__).resolve().parent.parent.parent.parent / '.cursor' / 'debug.log'
         log_entry = {
             "location": "seller.py:189",
             "message": "Processing documents for images",
             "data": {
                 "totalDocuments": len(images_all or []),
-                "propertyIds": [p.get("id")[:8] for p in properties_list[:5]] if properties_list else []
+                "propertyIds": [p.get("id")[:8] for p in properties_list[:5]] if properties_list else [],
+                "propertyCount": len(properties_list),
+                "samplePropertyIds": [p.get("id") for p in properties_list[:3]] if properties_list else []
             },
             "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
             "sessionId": "debug-session",
@@ -203,19 +260,52 @@ async def get_seller_properties(
             "hypothesisId": "F"
         }
         try:
-            with open(".cursor/debug.log", 'a', encoding='utf-8') as f:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(log_path, 'a', encoding='utf-8') as f:
                 f.write(json.dumps(log_entry) + '\n')
-        except:
-            pass
+        except Exception as log_err:
+            print(f"[SELLER] Failed to write log: {log_err}")
         # #endregion
         
-        for doc in images_all or []:
-            prop_id = doc.get("entity_id")
-            file_type = doc.get("file_type", "")
-            doc_category = doc.get("document_category", "")
-            if prop_id and file_type.startswith("image/"):
-                image_url = doc.get("file_path") or doc.get("url") or doc.get("public_url")
-                if image_url:
+        print(f"[SELLER] Processing {len(images_all or [])} documents for {len(properties_list)} properties")
+        print(f"[SELLER] Property IDs: {[p.get('id')[:8] for p in properties_list[:5]]}")
+        
+                for doc in images_all or []:
+                    prop_id = doc.get("entity_id")
+                    file_type = doc.get("file_type", "")
+                    doc_category = doc.get("document_category", "")
+                    # #region agent log
+                    if prop_id and file_type.startswith("image/"):
+                        # Log document details for debugging
+                        log_doc = {
+                            "location": "seller.py:216",
+                            "message": "Processing image document",
+                            "data": {
+                                "propertyId": prop_id[:8] if prop_id else "N/A",
+                                "fileType": file_type,
+                                "docCategory": doc_category,
+                                "hasFilePath": bool(doc.get("file_path")),
+                                "hasUrl": bool(doc.get("url")),
+                                "hasPublicUrl": bool(doc.get("public_url")),
+                                "filePath": doc.get("file_path"),
+                                "url": doc.get("url"),
+                                "publicUrl": doc.get("public_url")
+                            },
+                            "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
+                            "sessionId": "debug-session",
+                            "runId": "run1",
+                            "hypothesisId": "F"
+                        }
+                        try:
+                            log_path.parent.mkdir(parents=True, exist_ok=True)
+                            with open(log_path, 'a', encoding='utf-8') as f:
+                                f.write(json.dumps(log_doc) + '\n')
+                        except:
+                            pass
+                    # #endregion
+                    if prop_id and file_type.startswith("image/"):
+                        image_url = doc.get("file_path") or doc.get("url") or doc.get("public_url")
+                        if image_url:
                     # If it's not already a full URL, convert file_path to public URL
                     if not (image_url.startswith('http://') or image_url.startswith('https://')):
                         original_path = image_url
@@ -246,12 +336,13 @@ async def get_seller_properties(
         
         # #region agent log
         log_entry2 = {
-            "location": "seller.py:230",
+            "location": "seller.py:240",
             "message": "Images processed",
             "data": {
                 "propertiesWithImages": len(images_by_property),
                 "propertiesWithCoverPhotos": len(cover_photos_by_property),
-                "samplePropertyIds": list(images_by_property.keys())[:5] if images_by_property else []
+                "samplePropertyIds": [pid[:8] for pid in list(images_by_property.keys())[:5]] if images_by_property else [],
+                "totalImagesFound": sum(len(imgs) for imgs in images_by_property.values())
             },
             "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
             "sessionId": "debug-session",
@@ -259,11 +350,13 @@ async def get_seller_properties(
             "hypothesisId": "F"
         }
         try:
-            with open(".cursor/debug.log", 'a', encoding='utf-8') as f:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(log_path, 'a', encoding='utf-8') as f:
                 f.write(json.dumps(log_entry2) + '\n')
-        except:
-            pass
+        except Exception as log_err:
+            print(f"[SELLER] Failed to write log: {log_err}")
         # #endregion
+        print(f"[SELLER] Found images for {len(images_by_property)} properties, cover photos for {len(cover_photos_by_property)} properties")
         
         agents_by_id = {}
         for agent in agents_all or []:
@@ -312,25 +405,29 @@ async def get_seller_properties(
                 property_images = [cover_image] + property_images
             
             # #region agent log
-            log_entry3 = {
-                "location": "seller.py:265",
-                "message": "Property enhanced with images",
-                "data": {
-                    "propertyId": property_id[:8] if property_id else "N/A",
-                    "imagesCount": len(property_images),
-                    "hasCoverImage": bool(cover_image),
-                    "coverImageSource": "cover_photos_by_property" if cover_photos_by_property.get(property_id) else ("first_image" if not cover_photos_by_property.get(property_id) and property_images else "property_data")
-                },
-                "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
-                "sessionId": "debug-session",
-                "runId": "run1",
-                "hypothesisId": "F"
-            }
-            try:
-                with open(".cursor/debug.log", 'a', encoding='utf-8') as f:
-                    f.write(json.dumps(log_entry3) + '\n')
-            except:
-                pass
+            if len(property_images) == 0:
+                # Only log properties without images to reduce noise
+                log_entry3 = {
+                    "location": "seller.py:280",
+                    "message": "Property has NO images",
+                    "data": {
+                        "propertyId": property_id[:8] if property_id else "N/A",
+                        "propertyTitle": property_data.get("title"),
+                        "imagesCount": 0,
+                        "hasCoverImage": bool(cover_image),
+                        "documentsFound": len([d for d in (images_all or []) if d.get("entity_id") == property_id])
+                    },
+                    "timestamp": int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000),
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "F"
+                }
+                try:
+                    log_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(log_path, 'a', encoding='utf-8') as f:
+                        f.write(json.dumps(log_entry3) + '\n')
+                except Exception as log_err:
+                    print(f"[SELLER] Failed to write log: {log_err}")
             # #endregion
             
             enhanced_property = {
