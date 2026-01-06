@@ -1157,7 +1157,8 @@ async def get_agent_properties(
                     file_type = doc.get("file_type", "")
                     doc_category = doc.get("document_category", "")
                     if prop_id and file_type.startswith("image/"):
-                        image_url = doc.get("file_path") or doc.get("url") or doc.get("public_url")
+                        # Check public_url first, then url, then file_path (same as seller endpoint)
+                        image_url = doc.get("public_url") or doc.get("url") or doc.get("file_path")
                         if image_url:
                             # If it's not already a full URL, convert file_path to public URL
                             if not (image_url.startswith('http://') or image_url.startswith('https://')):
