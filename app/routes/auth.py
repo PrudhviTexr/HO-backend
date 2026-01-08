@@ -1555,51 +1555,83 @@ async def change_password(request: Request) -> Dict[str, Any]:
         from ..services.email import send_email
         from ..core.config import settings
         
+        print("[CHANGE_PASSWORD] Starting password change request")
+        
         claims = get_current_user_claims(request)
         if not claims:
+            print("[CHANGE_PASSWORD] No authentication claims found")
             raise HTTPException(status_code=401, detail="Not authenticated")
         
         user_id = claims.get("sub")
         if not user_id:
+            print("[CHANGE_PASSWORD] No user_id in claims")
             raise HTTPException(status_code=401, detail="Invalid token")
         
-        body = await request.json()
+        print(f"[CHANGE_PASSWORD] User ID: {user_id}")
+        
+        try:
+            body = await request.json()
+        except Exception as e:
+            print(f"[CHANGE_PASSWORD] Failed to parse request body: {e}")
+            raise HTTPException(status_code=400, detail="Invalid request body format")
+        
         current_password = body.get("current_password", "").strip()
         new_password = body.get("new_password", "").strip()
         
+        print(f"[CHANGE_PASSWORD] Request data - current_password length: {len(current_password)}, new_password length: {len(new_password)}")
+        
         if not current_password or not new_password:
+            print("[CHANGE_PASSWORD] Missing current_password or new_password")
             raise HTTPException(status_code=400, detail="Both current_password and new_password are required")
         
         if len(new_password) < 8:
+            print(f"[CHANGE_PASSWORD] New password too short: {len(new_password)} characters")
             raise HTTPException(status_code=400, detail="Password must be at least 8 characters long")
         
         # Get user
+        print(f"[CHANGE_PASSWORD] Fetching user from database...")
         users = await db.select("users", filters={"id": user_id})
         if not users:
+            print(f"[CHANGE_PASSWORD] User not found: {user_id}")
             raise HTTPException(status_code=404, detail="User not found")
         
         user = users[0]
         password_hash = user.get("password_hash")
+        user_email = user.get("email")
+        
+        print(f"[CHANGE_PASSWORD] User found: {user_email}")
+        
+        if not password_hash:
+            print("[CHANGE_PASSWORD] No password_hash found for user")
+            raise HTTPException(status_code=400, detail="Account has no password set. Please use forgot password to set one.")
         
         # Verify current password
-        
-        password_valid = password_hash and verify_password(current_password, password_hash)
+        print("[CHANGE_PASSWORD] Verifying current password...")
+        password_valid = verify_password(current_password, password_hash)
         
         if not password_valid:
+            print("[CHANGE_PASSWORD] Current password verification failed")
             raise HTTPException(status_code=400, detail="Invalid current password")
+        
+        print("[CHANGE_PASSWORD] Current password verified successfully")
         
         # Check if new password is same as current
         if verify_password(new_password, password_hash):
+            print("[CHANGE_PASSWORD] New password is same as current password")
             raise HTTPException(status_code=400, detail="New password must be different from current password")
         
         # Hash new password
+        print("[CHANGE_PASSWORD] Hashing new password...")
         new_password_hash = get_password_hash(new_password)
         
         # Update password
+        print("[CHANGE_PASSWORD] Updating password in database...")
         await db.update("users", {
             "password_hash": new_password_hash,
             "updated_at": dt.datetime.now(pytz.UTC).isoformat()
         }, {"id": user_id})
+        
+        print("[CHANGE_PASSWORD] Password updated successfully in database")
 
         # Send confirmation email
         try:
@@ -1739,22 +1771,30 @@ async def change_password(request: Request) -> Dict[str, Any]:
             </html>
             """
             
+            print(f"[CHANGE_PASSWORD] Sending email notification to: {user_email}")
             await send_email(
                 to=user_email,
                 subject="Password Changed Successfully - Home & Own",
                 html=email_html
             )
+            print("[CHANGE_PASSWORD] Email notification sent successfully")
 
         except Exception as email_error:
             # Don't fail password change if email fails
+            print(f"[CHANGE_PASSWORD] Email notification failed (non-critical): {email_error}")
             pass
         
+        print("[CHANGE_PASSWORD] Password change completed successfully")
         return {
             "success": True,
             "message": "Password changed successfully. An email notification has been sent."
         }
         
-    except HTTPException:
+    except HTTPException as he:
+        print(f"[CHANGE_PASSWORD] HTTPException: {he.status_code} - {he.detail}")
         raise
     except Exception as e:
+        print(f"[CHANGE_PASSWORD] Unexpected error: {e}")
+        import traceback
+        print(f"[CHANGE_PASSWORD] Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to change password: {str(e)}")

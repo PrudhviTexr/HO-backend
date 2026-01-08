@@ -528,11 +528,16 @@ async def get_seller_inquiries(
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid token")
         
+        print(f"[SELLER] ========== FETCHING INQUIRIES ==========")
+        print(f"[SELLER] Fetching inquiries for user: {user_id}")
+        print(f"[SELLER] Filters - property_id: {property_id}, status: {status}, limit: {limit}")
+        
         # Check cache first (1 minute cache for faster response)
         from ..core.cache import cache
         cache_key = f"seller_inquiries:{user_id}:{property_id or 'all'}:{status or 'all'}:{limit or 20}:{offset or 0}"
         cached_result = cache.get(cache_key)
         if cached_result is not None:
+            print(f"[SELLER] Returning cached inquiries result")
             return cached_result
         
         # Optimize: Build filters directly without fetching all properties first
@@ -546,25 +551,32 @@ async def get_seller_inquiries(
             #     return {"success": True, "inquiries": [], "total": 0}
         else:
             # Get seller's property IDs - increase limit to get all properties for inquiries
+            print(f"[SELLER] Fetching seller's properties...")
             properties = await db.select("properties", filters={"added_by": user_id}, limit=1000)  # Increased to get all properties
             property_ids = [p.get("id") for p in (properties or [])]
+            print(f"[SELLER] Found {len(property_ids)} properties for seller")
             
             if not property_ids:
+                print(f"[SELLER] No properties found for seller, returning empty inquiries")
                 result = {"success": True, "inquiries": [], "total": 0}
                 cache.set(cache_key, result, ttl=120)  # Cache for 2 minutes for faster repeated requests
                 return result
             
+            print(f"[SELLER] First 5 property IDs: {property_ids[:5]}")
             filters = {"property_id": {"in": property_ids}}
         
         if status:
             filters["status"] = status
         
         # Get inquiries with limit and ordering - increase limit to get all inquiries
+        print(f"[SELLER] Querying inquiries with filters: {filters}")
         inquiries = await db.select("inquiries", filters=filters, limit=min(limit or 1000, 1000), order_by="created_at", ascending=False)
         inquiries_list = inquiries or []
+        print(f"[SELLER] Found {len(inquiries_list)} inquiries")
         
         # Early return if no inquiries
         if not inquiries_list:
+            print(f"[SELLER] No inquiries found, returning empty list")
             result = {"success": True, "inquiries": [], "total": 0}
             cache.set(cache_key, result, ttl=120)  # Cache for 2 minutes for faster repeated requests
             return result
@@ -736,7 +748,9 @@ async def get_seller_bookings(
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid token")
         
+        print(f"[SELLER] ========== FETCHING BOOKINGS ==========")
         print(f"[SELLER] Fetching bookings for user: {user_id}")
+        print(f"[SELLER] Filters - property_id: {property_id}, status: {status}, limit: {limit}")
         
         # Optimize: Build filters directly without fetching all properties first
         if property_id:
@@ -745,15 +759,20 @@ async def get_seller_bookings(
             # Verify the property belongs to this seller
             properties = await db.select("properties", filters={"id": property_id, "added_by": user_id}, limit=1)
             if not properties:
+                print(f"[SELLER] Property {property_id} does not belong to seller {user_id}")
                 return {"success": True, "bookings": [], "total": 0}
         else:
             # Get seller's property IDs - increase limit to get all properties
+            print(f"[SELLER] Fetching seller's properties...")
             properties = await db.select("properties", filters={"added_by": user_id}, limit=1000)  # Increased to get all properties
             property_ids = [p.get("id") for p in (properties or [])]
+            print(f"[SELLER] Found {len(property_ids)} properties for seller")
             
             if not property_ids:
+                print(f"[SELLER] No properties found for seller, returning empty bookings")
                 return {"success": True, "bookings": [], "total": 0}
             
+            print(f"[SELLER] First 5 property IDs: {property_ids[:5]}")
             filters = {"property_id": {"in": property_ids}}
         
         if status:
@@ -761,6 +780,7 @@ async def get_seller_bookings(
         
         # Get bookings with limit and ordering - increase limit to get all bookings
         import asyncio
+        print(f"[SELLER] Querying bookings with filters: {filters}")
         try:
             bookings = await asyncio.wait_for(
                 db.select("bookings", filters=filters, limit=min(limit or 1000, 1000), order_by="created_at", ascending=False),
@@ -770,9 +790,11 @@ async def get_seller_bookings(
             print(f"[SELLER] Bookings query timeout for user: {user_id}")
             return {"success": True, "bookings": [], "total": 0}
         bookings_list = bookings or []
+        print(f"[SELLER] Found {len(bookings_list)} bookings")
         
         # Early return if no bookings
         if not bookings_list:
+            print(f"[SELLER] No bookings found, returning empty list")
             return {"success": True, "bookings": [], "total": 0}
         
         # Apply offset manually if needed (for pagination)

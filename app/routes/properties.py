@@ -158,147 +158,31 @@ def _format_property_pricing(property_data: dict) -> dict:
         'value': None
     }
 
-@router.get("/debug/connection")
-async def debug_connection():
-    """Debug endpoint to show Supabase connection details"""
-    from ..db.supabase_client import db
-    from ..core.config import settings
-    
-    connection_info = {
-        "supabase_url": settings.SUPABASE_URL,
-        "using_service_role_key": bool(settings.SUPABASE_SERVICE_ROLE_KEY),
-        "using_anon_key": bool(settings.SUPABASE_ANON_KEY) and not settings.SUPABASE_SERVICE_ROLE_KEY,
-        "service_role_key_set": "Yes" if settings.SUPABASE_SERVICE_ROLE_KEY else "No",
-        "anon_key_set": "Yes" if settings.SUPABASE_ANON_KEY else "No",
-    }
-    
-    # Try to extract project ID
-    try:
-        project_id = settings.SUPABASE_URL.split("//")[1].split(".")[0] if "." in settings.SUPABASE_URL else "unknown"
-        connection_info["project_id"] = project_id
-    except:
-        connection_info["project_id"] = "unknown"
-    
-    print("\n" + "="*80)
-    print("[DEBUG] Supabase Connection Details:")
-    print("="*80)
-    print(f"[DEBUG] URL: {connection_info['supabase_url']}")
-    print(f"[DEBUG] Project ID: {connection_info['project_id']}")
-    print(f"[DEBUG] Using SERVICE_ROLE_KEY: {connection_info['using_service_role_key']}")
-    print(f"[DEBUG] Using ANON_KEY: {connection_info['using_anon_key']}")
-    print(f"[DEBUG] SERVICE_ROLE_KEY set: {connection_info['service_role_key_set']}")
-    print(f"[DEBUG] ANON_KEY set: {connection_info['anon_key_set']}")
-    print("="*80 + "\n")
-    
-    return connection_info
-
-@router.get("/debug/all")
-async def debug_all_properties():
-    """Debug endpoint to print ALL properties from database without any filters"""
-    try:
-        print("\n" + "="*80)
-        print("[DEBUG] Fetching ALL properties from database (no filters)")
-        print("="*80)
-        
-        # Get all properties without any filters
-        all_props = await db.select("properties", limit=1000, filters=None, order_by="created_at", ascending=False)
-        
-        print(f"\n[DEBUG] Total properties found: {len(all_props) if all_props else 0}")
-        
-        if all_props and len(all_props) > 0:
-            print("\n[DEBUG] Sample of first 10 properties:")
-            print("-"*80)
-            for i, prop in enumerate(all_props[:10], 1):
-                print(f"\nProperty #{i}:")
-                print(f"  ID: {prop.get('id')}")
-                print(f"  Title: {prop.get('title', 'N/A')}")
-                print(f"  Status: {prop.get('status', 'N/A')}")
-                print(f"  Featured: {prop.get('featured', 'N/A')}")
-                print(f"  Listing Type: {prop.get('listing_type', 'N/A')}")
-                print(f"  Property Type: {prop.get('property_type', 'N/A')}")
-                print(f"  Owner ID: {prop.get('owner_id', 'N/A')}")
-                print(f"  Created At: {prop.get('created_at', 'N/A')}")
-            
-            # Count by status
-            status_counts = {}
-            featured_counts = {}
-            listing_type_counts = {}
-            for prop in all_props:
-                status = prop.get('status', 'none')
-                status_counts[status] = status_counts.get(status, 0) + 1
-                
-                featured = prop.get('featured', 'none')
-                featured_counts[featured] = featured_counts.get(featured, 0) + 1
-                
-                listing_type = prop.get('listing_type', 'none')
-                listing_type_counts[listing_type] = listing_type_counts.get(listing_type, 0) + 1
-            
-            print("\n" + "="*80)
-            print("[DEBUG] Summary Statistics:")
-            print("="*80)
-            print(f"\nStatus Distribution:")
-            for status, count in sorted(status_counts.items()):
-                print(f"  {status}: {count}")
-            
-            print(f"\nFeatured Distribution:")
-            for featured, count in sorted(featured_counts.items()):
-                print(f"  {featured}: {count}")
-            
-            print(f"\nListing Type Distribution:")
-            for listing_type, count in sorted(listing_type_counts.items()):
-                print(f"  {listing_type}: {count}")
-            
-            print("\n" + "="*80)
-            
-            return {
-                "total": len(all_props),
-                "status_distribution": status_counts,
-                "featured_distribution": featured_counts,
-                "listing_type_distribution": listing_type_counts,
-                "sample_properties": all_props[:10]
-            }
-        else:
-            print("\n[DEBUG] ⚠️ No properties found in database!")
-            print("[DEBUG] This could mean:")
-            print("  1. Database is empty")
-            print("  2. RLS policies are blocking access")
-            print("  3. Database connection issue")
-            
-            # Try a count query
-            try:
-                count_result = await db.select("properties", select="count", limit=1)
-                if count_result and len(count_result) > 0:
-                    total_count = count_result[0].get('count', 0)
-                    print(f"\n[DEBUG] Count query result: {total_count} properties")
-                    if total_count > 0:
-                        print("[DEBUG] ⚠️ Properties exist but SELECT query returned empty!")
-                        print("[DEBUG] This suggests RLS (Row Level Security) policies are blocking access")
-            except Exception as count_error:
-                print(f"\n[DEBUG] Count query failed: {count_error}")
-            
-            return {
-                "total": 0,
-                "error": "No properties found",
-                "message": "Check RLS policies if properties exist in Supabase dashboard"
-            }
-            
-    except Exception as e:
-        error_msg = str(e)
-        print(f"\n[DEBUG] ❌ Error fetching properties: {error_msg}")
-        print(f"[DEBUG] Error type: {type(e).__name__}")
-        import traceback
-        print(f"[DEBUG] Traceback:\n{traceback.format_exc()}")
-        
-        if "getaddrinfo failed" in error_msg or "11001" in error_msg:
-            return {
-                "error": "Database connection failed",
-                "message": "Cannot connect to Supabase - check network connection"
-            }
-        
-        return {
-            "error": str(e),
-            "message": "Failed to fetch properties"
-        }
+# DEBUG ENDPOINTS - Disabled for production
+# Uncomment for local debugging only
+# 
+# @router.get("/debug/connection")
+# async def debug_connection():
+#     """Debug endpoint to show Supabase connection details"""
+#     from ..db.supabase_client import db
+#     from ..core.config import settings
+#     
+#     connection_info = {
+#         "supabase_url": settings.SUPABASE_URL,
+#         "using_service_role_key": bool(settings.SUPABASE_SERVICE_ROLE_KEY),
+#         "using_anon_key": bool(settings.SUPABASE_ANON_KEY) and not settings.SUPABASE_SERVICE_ROLE_KEY,
+#         "service_role_key_set": "Yes" if settings.SUPABASE_SERVICE_ROLE_KEY else "No",
+#         "anon_key_set": "Yes" if settings.SUPABASE_ANON_KEY else "No",
+#     }
+#     
+#     return connection_info
+# 
+# @router.get("/debug/all")
+# async def debug_all_properties():
+#     """Debug endpoint to show all properties"""
+#     from ..db.supabase_client import db
+#     all_props = await db.select("properties", limit=1000, filters=None, order_by="created_at", ascending=False)
+#     return {"total": len(all_props) if all_props else 0, "properties": all_props[:10] if all_props else []}
 
 @router.get("")
 @router.get("/")
@@ -336,17 +220,12 @@ async def get_properties(
     start_time = time.time()
     
     try:
-        print(f"\n[PROPERTIES] GET /properties request received")
-        print(f"[PROPERTIES] Query params: status={status}, verified={verified}, owner_id={owner_id}, added_by={added_by}")
-        print(f"[PROPERTIES] Query params: city={city}, state={state}, property_type={property_type}, listing_type={listing_type}")
-        print(f"[PROPERTIES] Query params: featured={featured}, limit={limit}, title={title}, search={search}")
         
         # Use search parameter if provided, otherwise use title (search takes precedence)
         search_title = search if search else title
         
         # FOR LOCAL DEVELOPMENT: Completely bypass filters and query directly
         # This ensures properties are returned regardless of any filter issues
-        print(f"[PROPERTIES] 🔧 LOCAL DEV MODE: Querying ALL properties first (no filters)")
         
         # Try querying without ANY filters first to ensure we get properties
         try:
@@ -358,26 +237,14 @@ async def get_properties(
                 )
             except Exception as db_conn_error:
                 error_msg = str(db_conn_error)
-                print(f"[PROPERTIES] ⚠️ Database connection error: {error_msg}")
                 if "getaddrinfo failed" in error_msg or "11001" in error_msg:
-                    print(f"[PROPERTIES] ❌ Cannot connect to Supabase database - check SUPABASE_URL and network connection")
-                    print(f"[PROPERTIES] Returning empty array - database unavailable")
                     return []
                 # For other errors, log and try to continue with fallback query
-                print(f"[PROPERTIES] ⚠️ Database error (non-connection): {error_msg}")
-                print(f"[PROPERTIES] Attempting fallback query...")
                 # Don't return empty array immediately - try the normal query path below
                 all_properties_direct = []
             
             # Log what we got from the query
-            print(f"[PROPERTIES] 🔍 Direct query result: {len(all_properties_direct) if all_properties_direct else 0} properties")
             if all_properties_direct and len(all_properties_direct) > 0:
-                print(f"[PROPERTIES] ✅✅✅ DIRECT QUERY SUCCESS: Found {len(all_properties_direct)} properties!")
-                print(f"[PROPERTIES] Sample property IDs: {[p.get('id') for p in all_properties_direct[:3]]}")
-                print(f"[PROPERTIES] Sample property statuses: {[p.get('status') for p in all_properties_direct[:3]]}")
-                print(f"[PROPERTIES] Sample property featured: {[p.get('featured') for p in all_properties_direct[:3]]}")
-                print(f"[PROPERTIES] Sample property listing_type: {[p.get('listing_type') for p in all_properties_direct[:3]]}")
-                print(f"[PROPERTIES] Returning properties directly (bypassing all filters for local dev)")
                 
                 # Process and return the properties
                 filtered_properties = all_properties_direct
@@ -385,10 +252,8 @@ async def get_properties(
                 # Apply client-side filters only if needed (for specific queries)
                 if owner_id:
                     filtered_properties = [p for p in filtered_properties if p.get('owner_id') == owner_id or p.get('added_by') == owner_id]
-                    print(f"[PROPERTIES] Filtered by owner_id: {len(filtered_properties)} properties")
                 if added_by:
                     filtered_properties = [p for p in filtered_properties if p.get('added_by') == added_by]
-                    print(f"[PROPERTIES] Filtered by added_by: {len(filtered_properties)} properties")
                 if featured is not None:
                     # Log before filter
                     before_count = len(filtered_properties)
@@ -396,11 +261,9 @@ async def get_properties(
                     for p in filtered_properties:
                         feat_val = p.get('featured')
                         featured_status_counts[feat_val] = featured_status_counts.get(feat_val, 0) + 1
-                    print(f"[PROPERTIES] Before featured filter - Total: {before_count}, Featured status distribution: {featured_status_counts}")
                     
                     # Show sample featured values for debugging
                     sample_featured = [str(p.get('featured')) for p in filtered_properties[:10]]
-                    print(f"[PROPERTIES] Sample featured values (first 10): {sample_featured}")
                     
                     # Apply filter - handle both boolean True and string "true"
                     # FastAPI converts "true" query param to boolean True, but handle both cases for robustness
@@ -413,12 +276,9 @@ async def get_properties(
                                                  or str(p.get('featured')).lower() == 'true'
                                                  or p.get('featured') == 1
                                                  or p.get('featured') == "1")]
-                        print(f"[PROPERTIES] Featured=True filter: {before_featured} -> {len(filtered_properties)} properties")
                         if len(filtered_properties) == 0:
                             # Show sample from original list to help debug
-                            print(f"[PROPERTIES] ⚠️ No featured properties found! Checking sample from before filter:")
                             for i, p in enumerate(filtered_properties[:5] if len(filtered_properties) > 0 else all_properties_direct[:5]):
-                                print(f"[PROPERTIES]   Property {i+1}: featured={p.get('featured')} (type: {type(p.get('featured'))})")
                     elif featured is False or featured == "false" or str(featured).lower() == 'false':
                         filtered_properties = [p for p in filtered_properties 
                                              if (p.get('featured') == False 
@@ -430,21 +290,16 @@ async def get_properties(
                     else:
                         filtered_properties = [p for p in filtered_properties if p.get('featured') == featured]
                     
-                    print(f"[PROPERTIES] After featured={featured} filter: {len(filtered_properties)} properties")
                     
                     # Log sample properties for debugging
                     if len(filtered_properties) > 0:
-                        print(f"[PROPERTIES] Sample featured property: {filtered_properties[0].get('id')} - {filtered_properties[0].get('title')} - Featured: {filtered_properties[0].get('featured')}")
                     else:
-                        print(f"[PROPERTIES] ⚠️ No properties match featured={featured} filter!")
-                        print(f"[PROPERTIES] Available featured values: {list(set([str(p.get('featured')) for p in all_properties_direct[:10]]))}")
                 
                 # Apply status filter client-side (include active and pending by default)
                 prop_statuses = {}
                 for p in filtered_properties:
                     s = p.get('status', '').lower() if p.get('status') else 'none'
                     prop_statuses[s] = prop_statuses.get(s, 0) + 1
-                print(f"[PROPERTIES] Status distribution before filter: {prop_statuses}")
                 
                 # Only apply status filter if status parameter is explicitly provided
                 # Otherwise, include all statuses except sold/rented/withdrawn/inactive
@@ -457,21 +312,16 @@ async def get_properties(
                     else:
                         filtered_properties = [p for p in filtered_properties 
                                              if p.get('status', '').lower() == status.lower()]
-                    print(f"[PROPERTIES] After status={status} filter: {len(filtered_properties)} properties (was {before_status_filter})")
                 else:
                     # Default: Filter out sold/rented/withdrawn/inactive, but keep active, pending, and pending_unassigned
                     before_status_filter = len(filtered_properties)
                     filtered_properties = [p for p in filtered_properties 
                                          if p.get('status', '').lower() not in ['sold', 'rented', 'withdrawn', 'inactive']]
-                    print(f"[PROPERTIES] After default status filter (removed sold/rented/withdrawn/inactive): {len(filtered_properties)} properties (was {before_status_filter})")
-                    print(f"[PROPERTIES] Statuses included: active, pending, pending_unassigned")
                 
                 if property_type:
                     filtered_properties = [p for p in filtered_properties if p.get('property_type') == property_type]
-                    print(f"[PROPERTIES] Filtered by property_type: {len(filtered_properties)} properties")
                 if listing_type:
                     filtered_properties = [p for p in filtered_properties if p.get('listing_type') == listing_type]
-                    print(f"[PROPERTIES] Filtered by listing_type: {len(filtered_properties)} properties")
                 
                 # Filter by title/name search (case-insensitive partial match)
                 if search_title:
@@ -481,7 +331,6 @@ async def get_properties(
                         p for p in filtered_properties 
                         if search_lower in (p.get('title', '') or '').lower()
                     ]
-                    print(f"[PROPERTIES] Filtered by title/search='{search_title}': {before_title_filter} -> {len(filtered_properties)} properties")
                 
                 # Format properties
                 for prop in filtered_properties:
@@ -491,51 +340,31 @@ async def get_properties(
                 # IMPORTANT: Only return unfiltered if featured filter was NOT requested
                 # This prevents showing non-featured properties when user specifically requested featured
                 if len(filtered_properties) == 0 and len(all_properties_direct) > 0:
-                    print(f"[PROPERTIES] ⚠️ Filters resulted in 0 properties, but DB has {len(all_properties_direct)} properties")
-                    print(f"[PROPERTIES] Filters applied: featured={featured}, status={status}")
-                    print(f"[PROPERTIES] Sample property statuses: {[p.get('status') for p in all_properties_direct[:5]]}")
-                    print(f"[PROPERTIES] Sample property featured values: {[p.get('featured') for p in all_properties_direct[:10]]}")
                     
                     # Only return unfiltered if featured filter was NOT explicitly requested
                     if featured is None or featured == "":
-                        print(f"[PROPERTIES] No featured filter requested, returning unfiltered properties to ensure data is displayed")
                         filtered_properties = all_properties_direct[:limit or 50]
                     else:
-                        print(f"[PROPERTIES] Featured filter was requested but no matches found - returning empty array")
-                        print(f"[PROPERTIES] This prevents showing non-featured properties when featured was explicitly requested")
                         filtered_properties = []
                 
-                print(f"[PROPERTIES] ✅ Returning {len(filtered_properties)} properties")
                 return filtered_properties
             else:
-                print(f"[PROPERTIES] ⚠️ Direct query returned empty - checking database...")
                 # Try a simple count query to verify database connection
                 try:
                     count_result = await db.select("properties", select="count", limit=1)
                     if count_result and len(count_result) > 0:
                         total_count = count_result[0].get('count', 0)
-                        print(f"[PROPERTIES] 📊 Database connection OK - Total properties in DB: {total_count}")
                         if total_count > 0:
-                            print(f"[PROPERTIES] ⚠️ Properties exist in DB ({total_count}) but query returned empty!")
-                            print(f"[PROPERTIES] This might be due to RLS (Row Level Security) policies or query filters")
-                            print(f"[PROPERTIES] Falling back to filtered query path...")
                         else:
-                            print(f"[PROPERTIES] Database is empty - no properties found")
                     else:
-                        print(f"[PROPERTIES] ❌ Count query also returned empty - database might be empty or connection issue")
                 except Exception as count_error:
                     error_msg = str(count_error)
-                    print(f"[PROPERTIES] ❌ Count query failed: {count_error}")
                     if "getaddrinfo failed" in error_msg or "11001" in error_msg:
-                        print(f"[PROPERTIES] Database connection error detected - returning empty array")
                         return []
-                    print(f"[PROPERTIES] Falling back to filtered query path...")
         except Exception as direct_error:
             error_msg = str(direct_error)
-            print(f"[PROPERTIES] ⚠️ Direct query failed: {direct_error}, falling back to filtered query")
             # If it's a database connection error, return empty array immediately
             if "getaddrinfo failed" in error_msg or "11001" in error_msg:
-                print(f"[PROPERTIES] ❌ Database connection error detected - returning empty array")
                 return []
         
         # Fallback to original filtered query logic (if direct query didn't work)
@@ -548,13 +377,10 @@ async def get_properties(
             # Only apply status filter if it's explicitly set and not "all"
             if status.lower() == 'active':
                 # For "active", include active, pending, and pending_unassigned (all visible properties)
-                print(f"[PROPERTIES] Status filter requested: {status}, including active, pending, and pending_unassigned")
             else:
                 base_filters['status'] = status.lower()
-                print(f"[PROPERTIES] Applying status filter: {status}")
         else:
             # No status filter - include all statuses (active, pending, pending_unassigned) except sold/rented/withdrawn/inactive
-            print(f"[PROPERTIES] No status filter - will include active, pending, and pending_unassigned (exclude sold/rented/withdrawn/inactive)")
         
         # Only apply essential filters if explicitly requested
         if owner_id:
@@ -574,7 +400,6 @@ async def get_properties(
             if ',' in property_type:
                 # For multiple types, use "in" filter for database-level filtering
                 property_types = [pt.strip() for pt in property_type.split(',')]
-                print(f"[PROPERTIES] Multiple property types requested: {property_types}")
                 base_filters['property_type'] = {"in": property_types}
             else:
                 base_filters['property_type'] = property_type
@@ -601,11 +426,6 @@ async def get_properties(
         # Note: Price/rent/area range filters will be applied client-side after fetching
         # This is more efficient than complex DB queries for ranges
 
-        print(f"[PROPERTIES] Querying database with filters: {base_filters}, limit={limit}, offset={offset}")
-        print(f"[PROPERTIES] DEBUG: base_filters dict contents: {base_filters}")
-        print(f"[PROPERTIES] DEBUG: base_filters is empty: {not base_filters}")
-        print(f"[PROPERTIES] DEBUG: base_filters length: {len(base_filters) if base_filters else 0}")
-        print(f"[PROPERTIES] DEBUG: Filters will be applied: {bool(base_filters) and len(base_filters) > 0}")
 
         # Create cache key from filters and pagination (safe serialization)
         cache_key = None
@@ -618,10 +438,8 @@ async def get_properties(
             if offset == 0:
                 cached_result = cache.get(cache_key)
                 if cached_result is not None:
-                    print(f"[PROPERTIES] Returning cached result for key: {cache_key[:20]}...")
                     return cached_result
         except Exception as cache_error:
-            print(f"[PROPERTIES] ⚠️ Cache key creation failed (continuing without cache): {cache_error}")
             cache_key = None
 
         # Fetch properties from database with pagination - filter at DB level for performance
@@ -632,12 +450,9 @@ async def get_properties(
             # CRITICAL: If base_filters is empty dict, pass None instead to avoid any filter issues
             # Empty dict {} is truthy in Python, so we need to check length
             query_filters = base_filters if base_filters and len(base_filters) > 0 else None
-            print(f"[PROPERTIES] DEBUG: Query filters: {query_filters} (type: {type(query_filters)}, empty: {not base_filters})")
-            print(f"[PROPERTIES] DEBUG: base_filters dict: {base_filters}, length: {len(base_filters) if base_filters else 0}")
             
             # Try querying with explicit None to ensure no filters
             if not query_filters:
-                print(f"[PROPERTIES] 🔍 Querying WITHOUT any filters (filters=None)")
             
             properties = await asyncio.wait_for(
                 db.select(
@@ -650,34 +465,25 @@ async def get_properties(
                 ),
                 timeout=15.0  # Increased timeout to 15 seconds to allow query to complete
             )
-            print(f"[PROPERTIES] ✅ Query succeeded! Got {len(properties) if properties else 0} properties")
         except asyncio.TimeoutError:
             db_elapsed = (time.time() - db_start) * 1000
-            print(f"[PROPERTIES] ❌ Database timeout after {db_elapsed:.0f}ms")
             # Return cached result if available, otherwise empty
             if cache_key and offset == 0:
                 cached_result = cache.get(cache_key)
                 if cached_result is not None:
                     total_elapsed = (time.time() - start_time) * 1000
-                    print(f"[PROPERTIES] Returning cached result ({total_elapsed:.0f}ms)")
                     return cached_result
-            print(f"[PROPERTIES] ⚠️ No cached result available, returning empty array")
             return []
         except Exception as db_error:
             db_elapsed = (time.time() - db_start) * 1000
-            print(f"[PROPERTIES] ❌ Database query ERROR after {db_elapsed:.0f}ms: {db_error}")
             try:
                 import traceback as tb
-                print(f"[PROPERTIES] Full traceback: {tb.format_exc()}")
             except: pass
             return []
         
         db_elapsed = (time.time() - db_start) * 1000
-        print(f"[PROPERTIES] Database query completed in {db_elapsed:.0f}ms")
         
         if not properties:
-            print(f"[PROPERTIES] ❌ No properties found in database with filters: {base_filters}")
-            print(f"[PROPERTIES] 🔍 DEBUGGING: Trying to check if ANY properties exist in database (no filters)...")
             # Check if any properties exist at all (for debugging)
             try:
                 try:
@@ -685,41 +491,23 @@ async def get_properties(
                 except Exception as check_db_error:
                     error_msg = str(check_db_error)
                     if "getaddrinfo failed" in error_msg or "11001" in error_msg:
-                        print(f"[PROPERTIES] ❌ Database connection error during check: {error_msg}")
                         return []
                     raise
                 if all_properties_check and len(all_properties_check) > 0:
-                    print(f"[PROPERTIES] ✅ Properties DO exist in database! Found {len(all_properties_check)} sample properties")
                     for i, prop in enumerate(all_properties_check[:3]):  # Show first 3
-                        print(f"[PROPERTIES] Sample property #{i+1}:")
-                        print(f"  - ID: {prop.get('id')}")
-                        print(f"  - Title: {prop.get('title', 'N/A')}")
-                        print(f"  - Status: {prop.get('status', 'N/A')}")
-                        print(f"  - Verified: {prop.get('verified', 'N/A')}")
-                        print(f"  - Property Type: {prop.get('property_type', 'N/A')}")
-                        print(f"  - Created: {prop.get('created_at', 'N/A')}")
-                    print(f"[PROPERTIES] ⚠️⚠️⚠️ Properties exist but query with filters returned empty!")
-                    print(f"[PROPERTIES] ⚠️⚠️⚠️ This means filters are excluding all properties!")
-                    print(f"[PROPERTIES] 🔧 SOLUTION: Returning properties without filters for local dev")
                     # Return the unfiltered properties for local development
                     return all_properties_check[:limit] if limit else all_properties_check
                 else:
-                    print(f"[PROPERTIES] ⚠️ No properties exist in database at all!")
             except Exception as check_error:
                 error_msg = str(check_error)
-                print(f"[PROPERTIES] ❌ Error checking for properties: {check_error}")
                 try:
                     import traceback as tb
-                    print(f"[PROPERTIES] Traceback: {tb.format_exc()}")
                 except Exception as tb_err:
-                    print(f"[PROPERTIES] Error getting traceback: {tb_err}")
                 # If it's a database connection error, return empty array immediately
                 if "getaddrinfo failed" in error_msg or "11001" in error_msg:
-                    print(f"[PROPERTIES] Database connection error - returning empty array")
                     return []
             return []
 
-        print(f"[PROPERTIES] Found {len(properties)} properties in database (paginated)")
 
         # Apply price/rent/area range filters client-side (efficient for paginated results)
         if min_price is not None or max_price is not None:
@@ -728,7 +516,6 @@ async def get_properties(
                 (min_price is None or (p.get('price') and p.get('price') >= min_price)) and
                 (max_price is None or (p.get('price') and p.get('price') <= max_price))]
             if len(properties) < initial_count:
-                print(f"[PROPERTIES] Price filter: {initial_count} -> {len(properties)} properties")
         
         if min_rent is not None or max_rent is not None:
             initial_count = len(properties)
@@ -736,7 +523,6 @@ async def get_properties(
                 (min_rent is None or (p.get('monthly_rent') and p.get('monthly_rent') >= min_rent)) and
                 (max_rent is None or (p.get('monthly_rent') and p.get('monthly_rent') <= max_rent))]
             if len(properties) < initial_count:
-                print(f"[PROPERTIES] Rent filter: {initial_count} -> {len(properties)} properties")
         
         if min_area is not None or max_area is not None:
             initial_count = len(properties)
@@ -744,7 +530,6 @@ async def get_properties(
                 (min_area is None or (p.get('area_sqft') and p.get('area_sqft') >= min_area)) and
                 (max_area is None or (p.get('area_sqft') and p.get('area_sqft') <= max_area))]
             if len(properties) < initial_count:
-                print(f"[PROPERTIES] Area filter: {initial_count} -> {len(properties)} properties")
 
         # Note: Multiple property types are now filtered at database level using "in" filter
         # No need for client-side filtering here anymore
@@ -754,7 +539,6 @@ async def get_properties(
         for prop in properties:
             if prop.get('city'):
                 cities_in_db.add(prop['city'])
-        print(f"[PROPERTIES] Cities in database: {sorted(cities_in_db)}")
 
         # Apply client-side filters that can't be done server-side
         filtered_properties = []
@@ -824,7 +608,6 @@ async def get_properties(
                 if prop_city != city_filter:
                     # Try partial matching
                     if city_filter not in prop_city and prop_city not in city_filter:
-                        print(f"[PROPERTIES] City filter failed: '{city}' != '{enhanced_prop['city']}'")
                         continue
 
             # Apply state filter (case-insensitive)
@@ -834,7 +617,6 @@ async def get_properties(
                 if prop_state != state_filter:
                     # Try partial matching
                     if state_filter not in prop_state and prop_state not in state_filter:
-                        print(f"[PROPERTIES] State filter failed: '{state}' != '{enhanced_prop['state']}'")
                         continue
 
             # Apply furnishing status filter
@@ -844,7 +626,6 @@ async def get_properties(
                 if prop_furnishing != furnishing_filter:
                     # Try partial matching
                     if furnishing_filter not in prop_furnishing and prop_furnishing not in furnishing_filter:
-                        print(f"[PROPERTIES] Furnishing filter failed: '{furnishing_status}' != '{enhanced_prop['furnishing_status']}'")
                         continue
 
             # Apply status filter client-side
@@ -852,24 +633,20 @@ async def get_properties(
             
             # FILTER OUT SOLD/RENTED/WITHDRAWN/INACTIVE PROPERTIES - don't show these to buyers
             if prop_status in ['sold', 'rented', 'withdrawn', 'inactive']:
-                print(f"[PROPERTIES] Skipping {prop_status} property: {enhanced_prop.get('id', 'unknown')}")
                 continue
             
             # If status filter was explicitly set to "active", only show active properties
             # Otherwise, show both active and pending (pending = awaiting admin approval)
             if status and status.lower() == 'active':
                 if prop_status not in ['active']:
-                    print(f"[PROPERTIES] Status filter 'active' - skipping {prop_status} property")
                     continue
             # If no status filter or status='all', show active, pending, and pending_unassigned
             elif not status or status.lower() in ['all', '*', '']:
                 if prop_status not in ['active', 'pending', 'pending_unassigned']:
                     if prop_status not in ['sold', 'rented', 'withdrawn', 'inactive']:  # Already filtered above
-                        print(f"[PROPERTIES] Including {prop_status} property (no status filter)")
             # If specific status requested, only show that status
             elif status and status.lower() not in ['all', '*', '']:
                 if prop_status != status.lower():
-                    print(f"[PROPERTIES] Status filter '{status}' - skipping {prop_status} property")
                     continue
 
             # Property passed all filters
@@ -895,11 +672,9 @@ async def get_properties(
                         batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
                         for result in batch_results:
                             if isinstance(result, Exception):
-                                print(f"[PROPERTIES] Error fetching documents batch: {result}")
                             elif result:
                                 all_image_docs.extend(result)
                     except Exception as batch_error:
-                        print(f"[PROPERTIES] Error in documents batch query: {batch_error}")
                 
                 # Group images by property_id (separate cover photos from regular images)
                 images_by_property = {}
@@ -920,7 +695,6 @@ async def get_properties(
                                     public_url = db.supabase_client.storage.from_('property-images').get_public_url(image_url)
                                     image_url = public_url
                                 except Exception as url_error:
-                                    print(f"[PROPERTIES] Failed to get public URL for {image_url}: {url_error}")
                                     # Try documents bucket as fallback
                                     try:
                                         public_url = db.supabase_client.storage.from_('documents').get_public_url(image_url)
@@ -955,39 +729,30 @@ async def get_properties(
                     if not prop.get('cover_photo_url') and prop.get('images') and len(prop.get('images', [])) > 0:
                         prop['cover_photo_url'] = prop['images'][0]
             except Exception as img_err:
-                print(f"[PROPERTIES] Failed to batch fetch images: {img_err}")
         
         # Add formatted pricing display to each property (single loop)
         for prop in filtered_properties:
             prop['formatted_pricing'] = _format_property_pricing(prop)
 
-        print(f"[PROPERTIES] Returning {len(filtered_properties)} filtered properties")
         
         # Cache the result (only for first page to avoid stale pagination)
         try:
             if offset == 0 and cache_key:
                 cache.set(cache_key, filtered_properties, ttl=300)  # Cache for 5 minutes
         except Exception as cache_error:
-            print(f"[PROPERTIES] ⚠️ Cache set failed (continuing): {cache_error}")
         
         total_elapsed = (time.time() - start_time) * 1000
-        print(f"[PROPERTIES] Total request time: {total_elapsed:.0f}ms ({len(filtered_properties)} properties)")
         
         return filtered_properties
 
     except Exception as e:
         error_msg = str(e)
-        print(f"[PROPERTIES] Error fetching properties: {e}")
-        print(f"[PROPERTIES] Full traceback:")
         try:
             import traceback as tb
-            print(tb.format_exc())
         except Exception as tb_err:
-            print(f"[PROPERTIES] Error getting traceback: {tb_err}")
         
         # Check for database connection errors
         if "getaddrinfo failed" in error_msg or "11001" in error_msg:
-            print(f"[PROPERTIES] ❌ Database connection error - cannot reach Supabase")
             # Return empty array instead of error to allow frontend to load
             return []
         
@@ -1001,12 +766,8 @@ async def create_property(request: Request):
         try:
             property_data = await request.json()
         except Exception as json_error:
-            print(f"[PROPERTIES] Failed to parse JSON body: {json_error}")
             raise HTTPException(status_code=400, detail="Invalid JSON in request body")
         
-        print(f"[PROPERTIES] Creating new property")
-        print(f"[PROPERTIES] Received data keys: {list(property_data.keys())}")
-        print(f"[PROPERTIES] Property data sample: title={property_data.get('title')}, type={property_data.get('property_type')}")
         
         # Try to get user_id from authentication if available
         # Whoever creates the property is the owner (owner_id and added_by)
@@ -1018,16 +779,13 @@ async def create_property(request: Request):
                 claims = get_current_user_claims(request)
                 if claims:
                     user_id = claims.get("sub")
-                    print(f"[PROPERTIES] Found authenticated user creating property: {user_id}")
                     
                     # Get user type to determine if agent is creating property
                     try:
                         users = await db.select("users", filters={"id": user_id})
                         if users:
                             user_type = users[0].get("user_type", "").lower()
-                            print(f"[PROPERTIES] User type: {user_type}")
                     except Exception as user_error:
-                        print(f"[PROPERTIES] Could not fetch user type: {user_error}")
                     
                     # Set owner_id, seller_id, and added_by based on user type
                     # CRITICAL: 
@@ -1042,7 +800,6 @@ async def create_property(request: Request):
                         property_data['seller_id'] = user_id  # Set seller_id for seller-created properties
                         if not property_data.get('added_by'):
                             property_data['added_by'] = user_id
-                        print(f"[PROPERTIES] Seller creating property - set owner_id={property_data.get('owner_id')}, seller_id={user_id}")
                     
                     elif user_type == 'agent':
                         # Agent creates property: agent is the owner by default
@@ -1050,20 +807,17 @@ async def create_property(request: Request):
                         if property_data.get('owner_name') or property_data.get('owner_email') or property_data.get('owner_phone'):
                             # Agent is creating property on behalf of someone else
                             # owner_id will be set to null or provided owner_id, owner details stored in nested object
-                            print(f"[PROPERTIES] Agent creating property on behalf of owner: name={property_data.get('owner_name')}, email={property_data.get('owner_email')}, phone={property_data.get('owner_phone')}")
                             # Don't set owner_id here - let it be null or use provided owner_id
                         else:
                             # Agent is creating property for themselves - agent is the owner
                             if not property_data.get('owner_id'):
                                 property_data['owner_id'] = user_id
-                            print(f"[PROPERTIES] Agent creating property for themselves - set owner_id={user_id}")
                         
                         # Always set assigned_agent_id to the logged-in agent
                         property_data['assigned_agent_id'] = user_id
                         property_data['agent_id'] = user_id  # Also set legacy agent_id field
                         if not property_data.get('added_by'):
                             property_data['added_by'] = user_id
-                        print(f"[PROPERTIES] Agent creating property - set assigned_agent_id={user_id}")
                     
                     elif user_type == 'admin':
                         # Admin creates property: can assign owner_id and assigned_agent_id from form
@@ -1074,9 +828,7 @@ async def create_property(request: Request):
                             try:
                                 uuid.UUID(user_id)
                                 property_data['owner_id'] = user_id
-                                print(f"[PROPERTIES] Admin creating property - using admin user ID as owner_id: {user_id}")
                             except (ValueError, TypeError):
-                                print(f"[PROPERTIES] ⚠️ Admin user_id is not a valid UUID: {user_id} - owner_id must be provided from form")
                                 # Don't set owner_id - it must be provided from the form or will be null
                         
                         # Only set added_by if user_id is a valid UUID
@@ -1085,13 +837,11 @@ async def create_property(request: Request):
                                 uuid.UUID(user_id)
                                 property_data['added_by'] = user_id
                             except (ValueError, TypeError):
-                                print(f"[PROPERTIES] ⚠️ Cannot set added_by with invalid UUID: {user_id}")
                                 # Don't set added_by if user_id is not a valid UUID
                         
                         # assigned_agent_id can be set from form by admin
                         if property_data.get('assigned_agent_id'):
                             property_data['agent_id'] = property_data.get('assigned_agent_id')
-                        print(f"[PROPERTIES] Admin creating property - owner_id={property_data.get('owner_id')}, assigned_agent_id={property_data.get('assigned_agent_id')}")
                     
                     else:
                         # Buyer or other user types: user becomes owner
@@ -1102,18 +852,14 @@ async def create_property(request: Request):
                                 property_data['owner_id'] = user_id
                             if not property_data.get('added_by'):
                                 property_data['added_by'] = user_id
-                            print(f"[PROPERTIES] {user_type} creating property - set owner_id={property_data.get('owner_id')}, added_by={user_id}")
                         except (ValueError, TypeError):
-                            print(f"[PROPERTIES] ⚠️ User ID is not a valid UUID: {user_id} - cannot set owner_id or added_by")
                             # Don't set owner_id or added_by if user_id is not a valid UUID
             except Exception as auth_error:
-                print(f"[PROPERTIES] Could not extract user from request: {auth_error}")
                 # Continue without user_id if auth fails
         
         # Validate that owner_id is provided if it's required
         # For dev-admin or other cases where owner_id might not be set, check if it's required
         if not property_data.get('owner_id'):
-            print(f"[PROPERTIES] ⚠️ WARNING: owner_id is not set. Property may fail if owner_id is required in database.")
             # Try to find a default owner or raise an error
             # For now, we'll allow it to be None and let the database handle it
             # If the database requires it, the insert will fail with a clear error
@@ -1126,7 +872,6 @@ async def create_property(request: Request):
         # This prevents conflicts with existing properties that have empty custom_id
         if 'custom_id' in property_data and (not property_data.get('custom_id') or property_data.get('custom_id') == '' or property_data.get('custom_id') is None):
             del property_data['custom_id']
-            print(f"[PROPERTIES] Removed empty/null custom_id from frontend data")
         
         # Generate custom_id for property (required, must be unique)
         # Always generate a new one for new properties (never reuse frontend's custom_id)
@@ -1134,13 +879,10 @@ async def create_property(request: Request):
             from ..services.admin_service import generate_property_custom_id
             custom_id = await generate_property_custom_id()
             property_data['custom_id'] = custom_id
-            print(f"[PROPERTIES] Generated custom_id for property: {custom_id}")
         except Exception as cid_error:
-            print(f"[PROPERTIES] Failed to generate custom_id: {cid_error}")
             # Fallback: use timestamp-based custom_id to ensure uniqueness
             import time
             property_data['custom_id'] = f"PROP{int(time.time() * 1000) % 100000000:08d}"
-            print(f"[PROPERTIES] Using fallback custom_id: {property_data['custom_id']}")
         
         # Set timestamps
         now = dt.datetime.now(dt.timezone.utc).isoformat()
@@ -1155,7 +897,6 @@ async def create_property(request: Request):
         
         # CRITICAL: Force verified to False for new properties (admin approval required)
         property_data['verified'] = False
-        print(f"[PROPERTIES] Property will require admin approval: status={property_data['status']}, verified={property_data['verified']}")
         
         # Handle required fields - set to 'NA' if empty
         # Note: area_sqft is not required for new_property, new_apartment, lot, and venture types
@@ -1202,12 +943,10 @@ async def create_property(request: Request):
                 property_data['area_sqft'] = 0  # Set to 0 instead of None to satisfy NOT NULL constraint
                 property_data['area_sqyd'] = 0  # Set to 0 instead of None
                 property_data['area_acres'] = 0.0  # Set to 0.0 instead of None
-                print(f"[PROPERTIES] Area fields set to 0 for {property_type} (area not required but DB requires NOT NULL)")
         
         for field, default_value in required_fields.items():
             if field not in property_data or property_data[field] is None or property_data[field] == '':
                 property_data[field] = default_value
-                print(f"[PROPERTIES] Set required field {field} to default: {default_value}")
         
         # Convert numeric fields and handle 'NA' values
         numeric_fields = [
@@ -1270,7 +1009,6 @@ async def create_property(request: Request):
                                 property_data[field] = None
                         else:
                             property_data[field] = None
-                        print(f"[PROPERTIES] Invalid numeric value for {field}: {value}, set to {'None' if (field in ['area_sqft', 'area_sqyd', 'area_acres'] and is_area_not_required) else ('0' if field == 'area_sqft' else 'None')}")
         
         # Handle boolean fields
         boolean_fields = [
@@ -1305,19 +1043,15 @@ async def create_property(request: Request):
                         lat_value = float(lat_value)
                     else:
                         property_data['latitude'] = None
-                        print(f"[PROPERTIES] Invalid latitude type: {type(lat_value)}, value: {lat_value}")
                         lat_value = None
                     
                     # Validate latitude range if conversion succeeded
                     if lat_value is not None:
                         if -90 <= lat_value <= 90:
                             property_data['latitude'] = lat_value
-                            print(f"[PROPERTIES] Set latitude: {lat_value}")
                         else:
-                            print(f"[PROPERTIES] Latitude out of range: {lat_value}, setting to None")
                             property_data['latitude'] = None
                 except (ValueError, TypeError) as e:
-                    print(f"[PROPERTIES] Error converting latitude to float: {e}, value: {lat_value}")
                     property_data['latitude'] = None
         
         if 'longitude' in property_data:
@@ -1333,19 +1067,15 @@ async def create_property(request: Request):
                         lng_value = float(lng_value)
                     else:
                         property_data['longitude'] = None
-                        print(f"[PROPERTIES] Invalid longitude type: {type(lng_value)}, value: {lng_value}")
                         lng_value = None
                     
                     # Validate longitude range if conversion succeeded
                     if lng_value is not None:
                         if -180 <= lng_value <= 180:
                             property_data['longitude'] = lng_value
-                            print(f"[PROPERTIES] Set longitude: {lng_value}")
                         else:
-                            print(f"[PROPERTIES] Longitude out of range: {lng_value}, setting to None")
                             property_data['longitude'] = None
                 except (ValueError, TypeError) as e:
-                    print(f"[PROPERTIES] Error converting longitude to float: {e}, value: {lng_value}")
                     property_data['longitude'] = None
         
         # Auto-populate location fields from zipcode (suggested values, editable)
@@ -1373,18 +1103,13 @@ async def create_property(request: Request):
                     # DO NOT auto-set coordinates from pincode
                     # Coordinates must be set by user via map picker interaction
 
-                    print(f"[PROPERTIES] Auto-populated suggested location fields from zipcode {property_data['zip_code']}")
-                    print(f"[PROPERTIES] Suggested Location: {suggested_fields.get('city')}, {suggested_fields.get('district')}, {suggested_fields.get('state')}")
-                    print(f"[PROPERTIES] Suggested Address: {suggested_fields.get('address')}")
             except Exception as location_error:
-                print(f"[PROPERTIES] Failed to auto-populate location from zipcode: {location_error}")
                 # Don't fail property creation if zipcode lookup fails
                 # Just log the error and continue
         
         # DO NOT set default coordinates - coordinates must come from map picker
         # If coordinates are missing, they will be None (user must set via map)
         if property_data.get('latitude') is None or property_data.get('longitude') is None:
-            print(f"[PROPERTIES] Coordinates not set - user must set via map picker")
         
         # Remove sections from property_data as it's handled separately
         sections_data = property_data.pop('sections', None)
@@ -1514,11 +1239,9 @@ async def create_property(request: Request):
                 # CRITICAL: For area_sqft, don't overwrite if it's already set (we set it to 0 for special property types)
                 if db_field == 'area_sqft' and property_data.get('area_sqft') is not None and property_data.get('area_sqft') != '':
                     # Don't overwrite area_sqft if it's already set (we set it to 0 for special property types)
-                    print(f"[PROPERTIES] Skipping mapping {ui_field} -> {db_field} (area_sqft already set to {property_data.get('area_sqft')})")
                 elif db_field not in property_data:  # Only map if target field doesn't exist
                     property_data[db_field] = property_data[ui_field]
                 del property_data[ui_field]
-                print(f"[PROPERTIES] Mapped field {ui_field} -> {db_field}")
         
         # Remove fields that don't exist in the database
         # CRITICAL: owner_name, owner_email, owner_phone don't exist in properties table
@@ -1550,13 +1273,11 @@ async def create_property(request: Request):
         for field in fields_to_remove:
             if field in property_data:
                 del property_data[field]
-                print(f"[PROPERTIES] Removed unsupported field: {field}")
         
         # CRITICAL: Remove custom_id from frontend if it's empty (we'll generate our own)
         # This prevents frontend from sending empty custom_id which would conflict with existing empty custom_id
         if 'custom_id' in property_data and (not property_data.get('custom_id') or property_data.get('custom_id') == ''):
             del property_data['custom_id']
-            print(f"[PROPERTIES] Removed empty custom_id from frontend - will generate new one")
         
         # CRITICAL: Ensure custom_id is set and not empty (required for unique constraint)
         if not property_data.get('custom_id') or property_data.get('custom_id') == '' or property_data.get('custom_id') is None:
@@ -1564,13 +1285,10 @@ async def create_property(request: Request):
                 from ..services.admin_service import generate_property_custom_id
                 custom_id = await generate_property_custom_id()
                 property_data['custom_id'] = custom_id
-                print(f"[PROPERTIES] Generated custom_id for property (before insert): {custom_id}")
             except Exception as cid_error:
-                print(f"[PROPERTIES] Failed to generate custom_id before insert: {cid_error}")
                 # Fallback: use UUID-based custom_id to ensure uniqueness
                 import time
                 property_data['custom_id'] = f"PROP{int(time.time() * 1000) % 100000000:08d}"
-                print(f"[PROPERTIES] Using fallback custom_id before insert: {property_data['custom_id']}")
         
         # CRITICAL: Validate and remove invalid UUID fields before database insert
         # UUID fields that must be valid UUIDs or None
@@ -1582,7 +1300,6 @@ async def create_property(request: Request):
                     uuid.UUID(str(property_data[field]))
                 except (ValueError, TypeError):
                     # Invalid UUID - remove it or set to None
-                    print(f"[PROPERTIES] ⚠️ Invalid UUID for {field}: {property_data[field]} - removing it")
                     if field == 'added_by':
                         # added_by can be None, but other fields should be removed
                         property_data[field] = None
@@ -1602,7 +1319,6 @@ async def create_property(request: Request):
             # Ensure area_sqft is set
             if 'area_sqft' not in property_data or property_data.get('area_sqft') is None or property_data.get('area_sqft') == '':
                 property_data['area_sqft'] = 0
-                print(f"[PROPERTIES] ⚠️ Set area_sqft to 0 (was missing/None/empty)")
         elif area_unit == 'sqyd':
             # For sqyd: ensure area_sqyd exists, remove area_sqft and area_acres
             if 'area_sqft' in property_data:
@@ -1611,7 +1327,6 @@ async def create_property(request: Request):
                 try:
                     area_sqyd_float = float(area_sqyd) if area_sqyd else 0
                     property_data['area_sqft'] = area_sqyd_float * 9  # Convert to sqft
-                    print(f"[PROPERTIES] Converted {area_sqyd_float} sqyd to {property_data['area_sqft']} sqft")
                 except (ValueError, TypeError):
                     property_data['area_sqft'] = 0
                 del property_data['area_sqyd']
@@ -1624,7 +1339,6 @@ async def create_property(request: Request):
                 try:
                     area_acres_float = float(area_acres) if area_acres else 0
                     property_data['area_sqft'] = area_acres_float * 43560  # Convert to sqft
-                    print(f"[PROPERTIES] Converted {area_acres_float} acres to {property_data['area_sqft']} sqft")
                 except (ValueError, TypeError):
                     property_data['area_sqft'] = 0
                 del property_data['area_acres']
@@ -1635,7 +1349,6 @@ async def create_property(request: Request):
         # This MUST be the last check before database insert
         if 'area_sqft' not in property_data or property_data.get('area_sqft') is None or property_data.get('area_sqft') == '':
             property_data['area_sqft'] = 0
-            print(f"[PROPERTIES] ⚠️ Final safety check: Set area_sqft to 0 (was missing/None/empty)")
         
         # Ensure area_sqft is a number, not a string or None
         if isinstance(property_data.get('area_sqft'), str):
@@ -1643,10 +1356,8 @@ async def create_property(request: Request):
                 property_data['area_sqft'] = float(property_data['area_sqft'])
             except (ValueError, TypeError):
                 property_data['area_sqft'] = 0
-                print(f"[PROPERTIES] ⚠️ Converted area_sqft string to 0 (invalid value)")
         elif property_data.get('area_sqft') is None:
             property_data['area_sqft'] = 0
-            print(f"[PROPERTIES] ⚠️ Final safety check: Set area_sqft to 0 (was None after string check)")
         
         # ABSOLUTE FINAL CHECK: Ensure area_sqft exists and is a number (not None)
         try:
@@ -1656,7 +1367,6 @@ async def create_property(request: Request):
             property_data['area_sqft'] = float(area_value)
         except (ValueError, TypeError):
             property_data['area_sqft'] = 0.0
-            print(f"[PROPERTIES] ⚠️ ABSOLUTE FINAL: Set area_sqft to 0.0 (conversion failed)")
         
         # FINAL SAFETY CHECK: Remove empty strings from all numeric fields before insert
         # PostgreSQL cannot convert empty strings to numeric - must be None or omitted
@@ -1682,50 +1392,28 @@ async def create_property(request: Request):
                     # Special handling for area_sqft (must not be None)
                     if field == 'area_sqft':
                         property_data[field] = 0
-                        print(f"[PROPERTIES] Converted empty string for {field} to 0 (NOT NULL constraint)")
                     else:
                         property_data[field] = None
-                        print(f"[PROPERTIES] Converted empty string for {field} to None")
         
-        print(f"[PROPERTIES] Final property data keys: {list(property_data.keys())}")
-        print(f"[PROPERTIES] Required fields check:")
-        print(f"  - area_sqft: {property_data.get('area_sqft')} (type: {type(property_data.get('area_sqft')).__name__})")
-        print(f"  - address: {property_data.get('address')}")
-        print(f"  - city: {property_data.get('city')}")
-        print(f"  - state: {property_data.get('state')}")
-        print(f"  - zip_code: {property_data.get('zip_code')}")
-        print(f"  - listing_type: {property_data.get('listing_type')}")
-        print(f"  - property_type: {property_data.get('property_type')}")
-        print(f"[PROPERTIES] Coordinates and Images check:")
-        print(f"  - latitude: {property_data.get('latitude')} (type: {type(property_data.get('latitude')).__name__})")
-        print(f"  - longitude: {property_data.get('longitude')} (type: {type(property_data.get('longitude')).__name__})")
-        print(f"  - images: {property_data.get('images')} (count: {len(property_data.get('images', []))})")
-        print(f"  - amenities: {property_data.get('amenities')} (count: {len(property_data.get('amenities', []))})")
         
         # Insert property
         try:
             # ONE MORE CHECK: Ensure area_sqft is definitely set before insert
             if 'area_sqft' not in property_data or property_data['area_sqft'] is None:
                 property_data['area_sqft'] = 0.0
-                print(f"[PROPERTIES] ⚠️ PRE-INSERT CHECK: Set area_sqft to 0.0 before database insert")
             
             # CRITICAL FINAL CHECK: Ensure custom_id is set and not empty before insert
             # This is the absolute last check before database insert
             if not property_data.get('custom_id') or property_data.get('custom_id') == '' or property_data.get('custom_id') is None:
-                print(f"[PROPERTIES] ⚠️ CRITICAL: custom_id is empty before insert! Generating now...")
                 try:
                     from ..services.admin_service import generate_property_custom_id
                     custom_id = await generate_property_custom_id()
                     property_data['custom_id'] = custom_id
-                    print(f"[PROPERTIES] ✅ Generated custom_id at final check: {custom_id}")
                 except Exception as cid_error:
-                    print(f"[PROPERTIES] ⚠️ Failed to generate custom_id at final check: {cid_error}")
                     # Fallback: use timestamp-based ID to ensure uniqueness
                     import time
                     property_data['custom_id'] = f"PROP{int(time.time() * 1000) % 100000000:08d}"
-                    print(f"[PROPERTIES] ✅ Using fallback custom_id at final check: {property_data['custom_id']}")
             else:
-                print(f"[PROPERTIES] ✅ custom_id is set: {property_data.get('custom_id')}")
             
             # FINAL CHECK: Convert all empty strings in ALL numeric fields to None before insert
             # PostgreSQL cannot accept empty strings for numeric (integer or float) fields
@@ -1755,10 +1443,8 @@ async def create_property(request: Request):
                         # Special handling for area_sqft (must not be None)
                         if field == 'area_sqft':
                             property_data[field] = 0
-                            print(f"[PROPERTIES] FINAL CHECK: Converted empty string for {field} to 0 (NOT NULL constraint)")
                         else:
                             property_data[field] = None
-                            print(f"[PROPERTIES] FINAL CHECK: Converted empty string for numeric field {field} to None")
                     # Convert string numbers to actual numbers (if they're valid numbers)
                     elif isinstance(value, str) and value.strip() != '':
                         try:
@@ -1781,7 +1467,6 @@ async def create_property(request: Request):
                                 property_data[field] = 0
                             else:
                                 property_data[field] = None
-                            print(f"[PROPERTIES] FINAL CHECK: Failed to convert {field}='{value}' to number, set to None")
             
             # ABSOLUTE FINAL SAFETY CHECK: Remove ALL empty strings from property_data
             # PostgreSQL will error on ANY numeric field that receives an empty string
@@ -1809,52 +1494,30 @@ async def create_property(request: Request):
                     if key not in string_fields:
                         # This is likely a numeric or boolean field, remove empty string
                         fields_to_remove.append(key)
-                        print(f"[PROPERTIES] ABSOLUTE FINAL: Removing empty string for field '{key}'")
             
             # Remove the fields with empty strings (let database use defaults or NULL)
             for key in fields_to_remove:
                 del property_data[key]
             
-            print(f"[PROPERTIES] Attempting to insert property into database...")
-            print(f"[PROPERTIES] Property ID: {property_id}")
-            print(f"[PROPERTIES] Custom ID: {property_data.get('custom_id')}")
-            print(f"[PROPERTIES] Title: {property_data.get('title')}")
             
             result = await db.insert("properties", property_data)
-            print(f"[PROPERTIES] ✅ Database insert successful! Result: {result}")
-            print(f"[PROPERTIES] Property created successfully with ID: {property_id}")
             
             # Verify the property was saved correctly
             try:
                 saved_property = await db.select("properties", filters={"id": property_id})
                 if saved_property and len(saved_property) > 0:
                     prop = saved_property[0]
-                    print(f"[PROPERTIES] ✅ VERIFICATION - Property saved to database:")
-                    print(f"  - Title: {prop.get('title')}")
-                    print(f"  - Coordinates: lat={prop.get('latitude')}, lng={prop.get('longitude')}")
-                    print(f"  - Images: {len(prop.get('images', []))} images")
-                    print(f"  - Location: {prop.get('city')}, {prop.get('state')}")
-                    print(f"  - Status: {prop.get('status')}")
                 else:
-                    print(f"[PROPERTIES] ❌ WARNING: Property not found after creation!")
-                    print(f"[PROPERTIES] Attempted to find property with ID: {property_id}")
             except Exception as verify_error:
-                print(f"[PROPERTIES] ❌ Error verifying saved property: {verify_error}")
                 try:
                     import traceback as tb
-                    print(tb.format_exc())
                 except: pass
                 # Don't fail the request if verification fails - property might still be saved
         except Exception as insert_error:
-            print(f"[PROPERTIES] ❌ Database insert failed: {insert_error}")
-            print(f"[PROPERTIES] Full traceback:")
             try:
                 import traceback as tb
-                print(tb.format_exc())
             except: pass
-            print(f"[PROPERTIES] Property data that failed to insert:")
             for key, value in list(property_data.items())[:10]:  # Print first 10 fields
-                print(f"  {key}: {value} (type: {type(value).__name__})")
             # Re-raise the error so it's caught by the outer exception handler
             raise
         
@@ -1865,11 +1528,8 @@ async def create_property(request: Request):
                 from ..services.agent_assignment import AgentAssignmentService
                 assignment_result = await AgentAssignmentService.assign_agent_to_property(property_id)
                 if assignment_result.get('success'):
-                    print(f"[PROPERTIES] Agent assigned: {assignment_result.get('message')}")
                 else:
-                    print(f"[PROPERTIES] Agent assignment failed: {assignment_result.get('error')}")
             except Exception as agent_error:
-                print(f"[PROPERTIES] Agent assignment error: {agent_error}")
         
         # Handle sections separately if provided
         if sections_data is not None:
@@ -1895,14 +1555,12 @@ async def create_property(request: Request):
                 if to_insert:
                     for section_data in to_insert:
                         await db.insert("property_sections", section_data)
-                    print(f"[PROPERTIES] Added {len(to_insert)} sections to property")
         
         # Link uploaded images to property
         # Images uploaded before property creation have entity_id = user_id
         # Update them to entity_id = property_id
         try:
             if user_id:
-                print(f"[PROPERTIES] Linking uploaded images to property {property_id}...")
                 # Find documents uploaded by this user for property images
                 # These are images uploaded before property creation
                 user_docs = await db.select("documents", filters={
@@ -1912,7 +1570,6 @@ async def create_property(request: Request):
                 })
                 
                 if user_docs and len(user_docs) > 0:
-                    print(f"[PROPERTIES] Found {len(user_docs)} images to link to property {property_id}")
                     # Update each document to link to the property
                     for doc in user_docs:
                         try:
@@ -1923,15 +1580,10 @@ async def create_property(request: Request):
                             }, {
                                 "id": doc["id"]
                             })
-                            print(f"[PROPERTIES] ✅ Linked image {doc.get('name')} (ID: {doc.get('id')[:8]}) to property {property_id[:8]}")
                         except Exception as link_error:
-                            print(f"[PROPERTIES] ❌ Error linking image {doc.get('id')}: {link_error}")
                 else:
-                    print(f"[PROPERTIES] No pre-uploaded images found for user {user_id}")
         except Exception as link_images_error:
-            print(f"[PROPERTIES] Error linking images to property: {link_images_error}")
             import traceback
-            print(traceback.format_exc())
             # Don't fail property creation if image linking fails
         
         # Send property submission email to user
@@ -1986,9 +1638,7 @@ async def create_property(request: Request):
                         subject=f"Property Submitted - {property_data.get('title', 'Property')} - Home & Own",
                         html=email_html
                     )
-                    print(f"[PROPERTIES] Property submission email sent to user: {user_email}")
         except Exception as email_error:
-            print(f"[PROPERTIES] Failed to send property submission email: {email_error}")
         
         # Send admin notification for new property submission
         try:
@@ -2002,12 +1652,9 @@ async def create_property(request: Request):
                     if users:
                         user_data = users[0]
                 except Exception as user_error:
-                    print(f"[PROPERTIES] Failed to get user data for admin notification: {user_error}")
             
             await AdminNotificationService.notify_property_submission(property_data, user_data)
-            print(f"[PROPERTIES] Admin notification sent for new property: {property_data.get('title')}")
         except Exception as notify_error:
-            print(f"[PROPERTIES] Failed to send admin notification: {notify_error}")
             # Don't fail property creation if notification fails
         
         return {"id": property_id, "message": "Property created successfully"}
@@ -2015,18 +1662,14 @@ async def create_property(request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[PROPERTIES] Create property error: {e}")
-        print(f"[PROPERTIES] Full traceback:")
         try:
             import traceback as tb
-            print(tb.format_exc())
         except: pass
         raise HTTPException(status_code=500, detail=f"Error creating property: {str(e)}")
 
 @router.get("/{property_id_or_slug}")
 async def get_property(property_id_or_slug: str, request: Request = None):
     try:
-        print(f"[PROPERTIES] Fetching single property by ID or slug: {property_id_or_slug}")
         
         # Check if user is authenticated and is a buyer
         show_agent_info = False
@@ -2052,9 +1695,7 @@ async def get_property(property_id_or_slug: str, request: Request = None):
                             
                             if is_buyer:
                                 show_agent_info = True
-                                print(f"[PROPERTIES] Buyer authenticated - will show agent info if available")
             except Exception as auth_error:
-                print(f"[PROPERTIES] Auth check failed (non-buyer or not logged in): {auth_error}")
                 show_agent_info = False
         
         # First, try to fetch by ID (assuming it's a UUID)
@@ -2070,7 +1711,6 @@ async def get_property(property_id_or_slug: str, request: Request = None):
             pass
 
         # If not found by ID, search by slug using database query
-        print(f"[PROPERTIES] Not a valid UUID. Searching by slug: {property_id_or_slug}")
         import re
         
         # Try to find by searching titles that might match the slug
@@ -2095,7 +1735,6 @@ async def get_property(property_id_or_slug: str, request: Request = None):
                 slug = re.sub(r'-+', '-', slug) # Replace multiple dashes
                 
                 if slug == property_id_or_slug:
-                    print(f"[PROPERTIES] Property found by slug: {prop.get('id')}")
                     return await _process_single_property(dict(prop), show_agent_info=show_agent_info)
 
         # If we reach here, no property was found by ID or slug
@@ -2104,10 +1743,8 @@ async def get_property(property_id_or_slug: str, request: Request = None):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[PROPERTIES] Get property error: {e}")
         try:
             import traceback as tb
-            print(tb.format_exc())
         except: pass
         raise HTTPException(status_code=500, detail=f"Error fetching property: {str(e)}")
 
@@ -2147,9 +1784,7 @@ async def _process_single_property(property_data: dict, show_agent_info: bool = 
                 if owners:
                     owner = dict(owners[0])
                     property_data['owner']['email'] = owner.get('email', '')
-                    print(f"[PROPERTIES] Using registered user's email for owner: {owner.get('email')}")
             except Exception as e:
-                print(f"[PROPERTIES] Error fetching owner email: {e}")
     else:
         # Try to fetch owner from owner_id or added_by
         owner_id = property_data.get('owner_id') or property_data.get('added_by')
@@ -2166,9 +1801,7 @@ async def _process_single_property(property_data: dict, show_agent_info: bool = 
                         'email': owner.get('email', ''),  # Use registered user's email
                         'phone_number': owner.get('phone_number') or owner.get('phone')
                     }
-                    print(f"[PROPERTIES] Fetched owner details from registered user: {owner.get('email')}")
             except Exception as e:
-                print(f"[PROPERTIES] Error fetching owner details: {e}")
                 pass
 
     # Fetch seller details if seller_id is set (for seller-created properties)
@@ -2186,9 +1819,7 @@ async def _process_single_property(property_data: dict, show_agent_info: bool = 
                     'email': seller.get('email', ''),  # Use registered seller's email
                     'phone_number': seller.get('phone_number') or seller.get('phone')
                 }
-                print(f"[PROPERTIES] Seller info added: {property_data['seller']['name']} ({property_data['seller']['email']})")
         except Exception as e:
-            print(f"[PROPERTIES] Error fetching seller details: {e}")
             pass
 
     # Fetch assigned agent details if available - ONLY for logged-in buyers
@@ -2213,17 +1844,12 @@ async def _process_single_property(property_data: dict, show_agent_info: bool = 
                     'email': agent.get('email'),
                     'phone_number': agent.get('phone_number') or agent.get('phone'),
                 }
-                print(f"[PROPERTIES] Agent info added for buyer: {property_data['agent']['name']}")
             else:
-                print(f"[PROPERTIES] Agent ID {agent_id} not found in database")
         except Exception as e:
-            print(f"[PROPERTIES] Error fetching agent info: {e}")
             pass # Ignore agent fetch errors
     else:
         if not show_agent_info:
-            print(f"[PROPERTIES] Agent info not shown - user not authenticated as buyer")
         elif not agent_id:
-            print(f"[PROPERTIES] Agent info not shown - property has no assigned agent")
 
     # Fetch images if empty
     if not property_data.get('images'):
@@ -2244,7 +1870,6 @@ async def _process_single_property(property_data: dict, show_agent_info: bool = 
                                     public_url = db.supabase_client.storage.from_('property-images').get_public_url(image_url)
                                     image_url = public_url
                                 except Exception as url_error:
-                                    print(f"[PROPERTIES] Failed to get public URL for {image_url}: {url_error}")
                                     # Try documents bucket as fallback
                                     try:
                                         public_url = db.supabase_client.storage.from_('documents').get_public_url(image_url)
@@ -2266,10 +1891,8 @@ async def _process_single_property(property_data: dict, show_agent_info: bool = 
                 if cover_photo_url:
                     property_data['cover_photo_url'] = cover_photo_url
         except Exception as img_err:
-            print(f"[PROPERTIES] Error fetching images: {img_err}")
             try:
                 import traceback as tb
-                print(tb.format_exc())
             except: pass
             # Ignore image fetch errors but log them
     
@@ -2297,7 +1920,6 @@ async def _process_single_property(property_data: dict, show_agent_info: bool = 
                                 pass
                     property_data['cover_photo_url'] = image_url
         except Exception as cover_err:
-            print(f"[PROPERTIES] Error fetching cover photo: {cover_err}")
 
     # Ensure coordinates
     if property_data.get('latitude') is None or property_data.get('longitude') is None:
@@ -2314,19 +1936,15 @@ async def _process_single_property(property_data: dict, show_agent_info: bool = 
 @router.patch("/{property_id}")
 async def update_property(property_id: str, update_data: dict, request: Request = None):
     try:
-        print(f"[PROPERTIES] Updating property: {property_id}")
-        print(f"[PROPERTIES] Received update_data keys: {list(update_data.keys())}")
         
         # Debug: Print array fields specifically
         array_fields = ['images', 'amenities', 'room_images', 'gated_community_features']
         for field in array_fields:
             if field in update_data:
-                print(f"[PROPERTIES] {field}: {update_data[field]} (type: {type(update_data[field])})")
         
         # Check if property exists
         existing_properties = await db.select("properties", filters={"id": property_id})
         if not existing_properties:
-            print(f"[PROPERTIES] Property not found: {property_id}")
             raise HTTPException(status_code=404, detail="Property not found")
         
         existing_property = existing_properties[0]
@@ -2353,7 +1971,6 @@ async def update_property(property_id: str, update_data: dict, request: Request 
                         if users:
                             user_type = users[0].get("user_type", "").lower()
             except Exception as e:
-                print(f"[PROPERTIES] Error getting user type: {e}")
                 pass
             
             # Admin and seller can update status directly - no approval needed
@@ -2363,7 +1980,6 @@ async def update_property(property_id: str, update_data: dict, request: Request 
                 assigned_agent_id = existing_property.get("assigned_agent_id") or existing_property.get("agent_id")
                 if assigned_agent_id == user_id:
                     # Create status change request instead of directly updating
-                    print(f"[PROPERTIES] Agent {user_id} requested status change from {current_status} to {new_status} - creating approval request")
                     
                     # Store request in notifications table
                     try:
@@ -2393,10 +2009,8 @@ async def update_property(property_id: str, update_data: dict, request: Request 
                         update_data.pop('status')
                         update_data.pop('status_change_reason', None)  # Remove reason if present
                         
-                        print(f"[PROPERTIES] Status change request created, status update blocked. Request ID: {notification_data['id']}")
                         # Continue with other updates but status will remain unchanged
                     except Exception as req_error:
-                        print(f"[PROPERTIES] Failed to create status change request: {req_error}")
                         # If request creation fails, still block the status update
                         update_data.pop('status')
                         raise HTTPException(
@@ -2418,7 +2032,6 @@ async def update_property(property_id: str, update_data: dict, request: Request 
                 if isinstance(value, str) and value:
                     # Skip if it's already None or empty
                     if value in ['', 'null', 'undefined', 'NA', 'homeandown']:
-                        print(f"[PROPERTIES] Setting {field} to None for invalid value: {value}")
                         update_data[field] = None
                         continue
                     # Validate UUID format
@@ -2426,7 +2039,6 @@ async def update_property(property_id: str, update_data: dict, request: Request 
                         import uuid as uuid_lib
                         uuid_lib.UUID(value)
                     except (ValueError, AttributeError) as e:
-                        print(f"[PROPERTIES] Invalid UUID for {field}: {value}, setting to None")
                         update_data[field] = None
         
         # Update timestamp
@@ -2446,16 +2058,12 @@ async def update_property(property_id: str, update_data: dict, request: Request 
                         lat_value = float(lat_value)
                     else:
                         update_data['latitude'] = None
-                        print(f"[PROPERTIES] Invalid latitude type in update: {type(lat_value)}, value: {lat_value}")
                     # Validate latitude range
                     if update_data['latitude'] is not None and -90 <= lat_value <= 90:
                         update_data['latitude'] = lat_value
-                        print(f"[PROPERTIES] Updated latitude: {lat_value}")
                     elif update_data['latitude'] is not None:
-                        print(f"[PROPERTIES] Latitude out of range in update: {lat_value}, setting to None")
                         update_data['latitude'] = None
                 except (ValueError, TypeError) as e:
-                    print(f"[PROPERTIES] Error converting latitude to float in update: {e}, value: {lat_value}")
                     update_data['latitude'] = None
         
         if 'longitude' in update_data:
@@ -2471,22 +2079,17 @@ async def update_property(property_id: str, update_data: dict, request: Request 
                         lng_value = float(lng_value)
                     else:
                         update_data['longitude'] = None
-                        print(f"[PROPERTIES] Invalid longitude type in update: {type(lng_value)}, value: {lng_value}")
                     # Validate longitude range
                     if update_data['longitude'] is not None and -180 <= lng_value <= 180:
                         update_data['longitude'] = lng_value
-                        print(f"[PROPERTIES] Updated longitude: {lng_value}")
                     elif update_data['longitude'] is not None:
-                        print(f"[PROPERTIES] Longitude out of range in update: {lng_value}, setting to None")
                         update_data['longitude'] = None
                 except (ValueError, TypeError) as e:
-                    print(f"[PROPERTIES] Error converting longitude to float in update: {e}, value: {lng_value}")
                     update_data['longitude'] = None
         
         # DO NOT set default coordinates - coordinates must come from map picker
         # If coordinates are missing, they will be None (user must set via map)
         if update_data.get('latitude') is None or update_data.get('longitude') is None:
-            print(f"[PROPERTIES] Coordinates not set in update - user must set via map picker")
         
         # Remove sections from update_data as it's handled separately
         sections_data = update_data.pop('sections', None)
@@ -2566,7 +2169,6 @@ async def update_property(property_id: str, update_data: dict, request: Request 
         # CRITICAL: Remove city_id from update_data as it doesn't exist in the database
         if 'city_id' in update_data:
             del update_data['city_id']
-            print(f"[PROPERTIES] Removed city_id from update_data (doesn't exist in database schema)")
         
         # Ensure agent_id and assigned_agent_id are kept in sync
         # This ensures both fields are always updated together for consistency
@@ -2576,24 +2178,20 @@ async def update_property(property_id: str, update_data: dict, request: Request 
             if agent_id_value and agent_id_value not in ['', 'null', 'undefined', 'NA']:
                 # If agent_id is being set, also set assigned_agent_id
                 update_data['assigned_agent_id'] = agent_id_value
-                print(f"[PROPERTIES] Syncing assigned_agent_id with agent_id: {agent_id_value}")
             else:
                 # If agent_id is being cleared, also clear assigned_agent_id
                 update_data['assigned_agent_id'] = None
                 update_data['agent_id'] = None
-                print(f"[PROPERTIES] Clearing both agent_id and assigned_agent_id")
         elif 'assigned_agent_id' in update_data:
             assigned_agent_id_value = update_data['assigned_agent_id']
             # Handle empty string, None, or invalid values
             if assigned_agent_id_value and assigned_agent_id_value not in ['', 'null', 'undefined', 'NA']:
                 # If assigned_agent_id is being set, also set agent_id
                 update_data['agent_id'] = assigned_agent_id_value
-                print(f"[PROPERTIES] Syncing agent_id with assigned_agent_id: {assigned_agent_id_value}")
             else:
                 # If assigned_agent_id is being cleared, also clear agent_id
                 update_data['agent_id'] = None
                 update_data['assigned_agent_id'] = None
-                print(f"[PROPERTIES] Clearing both agent_id and assigned_agent_id")
         
         # Filter update_data to only include valid database columns
         filtered_update_data = {}
@@ -2602,9 +2200,7 @@ async def update_property(property_id: str, update_data: dict, request: Request 
                 filtered_update_data[key] = value
                 # Debug: Log area_unit specifically
                 if key == 'area_unit':
-                    print(f"[PROPERTIES] ✅ area_unit included in update: {value}")
             else:
-                print(f"[PROPERTIES] Skipping invalid column '{key}' - not in database schema")
         
         # Handle array fields that exist in the database as PostgreSQL arrays (TEXT[])
         # These should be sent as native arrays, not JSON strings
@@ -2612,46 +2208,37 @@ async def update_property(property_id: str, update_data: dict, request: Request 
         for field in array_fields:
             if field in filtered_update_data:
                 value = filtered_update_data[field]
-                print(f"[PROPERTIES] Processing {field}: {value} (type: {type(value)})")
                 
                 if isinstance(value, (list, dict)):
                     # Keep as native array for PostgreSQL array columns
                     # Don't convert to JSON string
                     filtered_update_data[field] = value
-                    print(f"[PROPERTIES] {field} kept as array: {value}")
                 elif isinstance(value, str):
                     # Handle string values
                     if value == '[]' or value == '{}' or value == '' or value == 'NA':
                         # Set empty array for empty/null values
                         filtered_update_data[field] = []
-                        print(f"[PROPERTIES] {field} set to empty array")
                     else:
                         # Try to parse as JSON if it's a string
                         try:
                             import json
                             parsed_value = json.loads(value)
                             filtered_update_data[field] = parsed_value
-                            print(f"[PROPERTIES] {field} parsed from JSON: {parsed_value}")
                         except (json.JSONDecodeError, TypeError):
                             # If parsing fails, treat as single item array
                             filtered_update_data[field] = [value] if value else []
-                            print(f"[PROPERTIES] {field} treated as single item array: {[value] if value else []}")
                 elif value is None:
                     # Set empty array for null values
                     filtered_update_data[field] = []
-                    print(f"[PROPERTIES] {field} set to empty array for null")
                 else:
                     # For any other type, try to convert to array
                     filtered_update_data[field] = [value] if value else []
-                    print(f"[PROPERTIES] {field} converted to array: {[value] if value else []}")
         
         # Update property (only existing columns)
         try:
             # Debug: Print what we're sending to database
-            print(f"[PROPERTIES] Sending to database:")
             for field in array_fields:
                 if field in filtered_update_data:
-                    print(f"[PROPERTIES] DB {field}: {filtered_update_data[field]} (type: {type(filtered_update_data[field])})")
             
             # Remove None values to avoid database issues, but allow None for agent_id/assigned_agent_id to clear assignments
             clean_update_data = {}
@@ -2663,7 +2250,6 @@ async def update_property(property_id: str, update_data: dict, request: Request 
                     clean_update_data[k] = v
             
             result = await db.update("properties", clean_update_data, {"id": property_id})
-            print(f"[PROPERTIES] Updating fields: {list(clean_update_data.keys())}")
             
             # Handle sections update separately if provided
             if sections_data is not None:
@@ -2694,7 +2280,6 @@ async def update_property(property_id: str, update_data: dict, request: Request 
                     if to_insert:
                         for section_data in to_insert:
                             await db.insert("property_sections", section_data)
-                        print(f"[PROPERTIES] Replaced {len(to_insert)} sections for property {property_id}")
                 else:
                     # Clear all sections
                     await db.delete("property_sections", {"property_id": property_id})
@@ -2727,7 +2312,6 @@ async def update_property(property_id: str, update_data: dict, request: Request 
                                                 public_url = db.supabase_client.storage.from_('property-images').get_public_url(image_url)
                                                 image_url = public_url
                                             except Exception as url_error:
-                                                print(f"[PROPERTIES] Failed to get public URL for {image_url}: {url_error}")
                                                 # Try documents bucket as fallback
                                                 try:
                                                     public_url = db.supabase_client.storage.from_('documents').get_public_url(image_url)
@@ -2745,30 +2329,22 @@ async def update_property(property_id: str, update_data: dict, request: Request 
                     # Add formatted pricing display
                     property_data['formatted_pricing'] = _format_property_pricing(property_data)
                     
-                    print(f"[PROPERTIES] Property updated successfully: {property_id}")
                     return {
                         "message": "Property updated successfully",
                         "property": property_data
                     }
             except Exception as fetch_error:
-                print(f"[PROPERTIES] Failed to fetch updated property: {fetch_error}")
             
-            print(f"[PROPERTIES] Property updated successfully: {property_id}")
             return {"message": "Property updated successfully"}
             
         except Exception as update_error:
-            print(f"[PROPERTIES] Property update failed: {property_id}")
-            print(f"[PROPERTIES] Update error details: {str(update_error)}")
             raise HTTPException(status_code=500, detail=f"Failed to update property: {str(update_error)}")
             
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[PROPERTIES] Update property error: {e}")
-        print(f"[PROPERTIES] Full traceback:")
         try:
             import traceback as tb
-            print(tb.format_exc())
         except: pass
         raise HTTPException(status_code=500, detail=f"Error updating property: {str(e)}")
 
@@ -2776,12 +2352,10 @@ async def update_property(property_id: str, update_data: dict, request: Request 
 async def toggle_featured_property(property_id: str, data: dict, _=Depends(require_api_key)):
     """Toggle featured status of a property (requires API key)"""
     try:
-        print(f"[PROPERTIES] Toggling featured status for property: {property_id}")
         
         # Check if property exists
         existing_properties = await db.select("properties", filters={"id": property_id})
         if not existing_properties:
-            print(f"[PROPERTIES] Property not found: {property_id}")
             raise HTTPException(status_code=404, detail="Property not found")
         
         # Get the featured value from request
@@ -2793,7 +2367,6 @@ async def toggle_featured_property(property_id: str, data: dict, _=Depends(requi
             "updated_at": dt.datetime.now(dt.timezone.utc).isoformat()
         }, {"id": property_id})
         
-        print(f"[PROPERTIES] Property featured status updated to: {featured}")
         return {
             "success": True,
             "message": f"Property {'featured' if featured else 'unfeatured'} successfully",
@@ -2803,11 +2376,8 @@ async def toggle_featured_property(property_id: str, data: dict, _=Depends(requi
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[PROPERTIES] Toggle featured error: {e}")
-        print(f"[PROPERTIES] Full traceback:")
         try:
             import traceback as tb
-            print(tb.format_exc())
         except: pass
         raise HTTPException(status_code=500, detail=f"Error toggling featured status: {str(e)}")
 
@@ -2818,8 +2388,6 @@ async def delete_property(property_id: str, request: Request, _=Depends(require_
     This endpoint should only be called by admin users or authorized services.
     """
     try:
-        print(f"[PROPERTIES] ⚠️ DELETE REQUEST for property: {property_id}")
-        print(f"[PROPERTIES] ⚠️ This is a destructive operation - logging for audit trail")
         
         # Check if property exists and get its title
         existing_properties = await db.select("properties", filters={"id": property_id})
@@ -2831,142 +2399,100 @@ async def delete_property(property_id: str, request: Request, _=Depends(require_
         property_custom_id = property_data.get('custom_id', 'N/A')
         
         # LOG DELETION DETAILS FOR AUDIT
-        print(f"[PROPERTIES] ⚠️ DELETING PROPERTY COMPLETELY:")
-        print(f"  - ID: {property_id}")
-        print(f"  - Custom ID: {property_custom_id}")
-        print(f"  - Title: {property_title}")
-        print(f"  - Owner ID: {property_data.get('owner_id')}")
-        print(f"  - Status: {property_data.get('status')}")
-        print(f"  - Created: {property_data.get('created_at')}")
         
         # Delete all related data to completely remove property from website
         
         # 1. Delete property sections
         try:
             await db.delete("property_sections", {"property_id": property_id})
-            print(f"[PROPERTIES] ✓ Deleted property sections")
         except Exception as e:
-            print(f"[PROPERTIES] ⚠️ Error deleting sections (may not exist): {e}")
         
         # 2. Delete documents/images related to property
         try:
             # Delete with both filters - entity_type and entity_id
             docs_result = await db.delete("documents", {"entity_type": "property", "entity_id": property_id})
-            print(f"[PROPERTIES] ✓ Deleted property documents/images: {docs_result}")
         except Exception as e:
-            print(f"[PROPERTIES] ⚠️ Error deleting documents (may not exist or table doesn't support multi-filter): {e}")
             # Try with just entity_id if multi-filter fails
             try:
                 docs_result = await db.delete("documents", {"entity_id": property_id})
-                print(f"[PROPERTIES] ✓ Deleted property documents/images (fallback): {docs_result}")
             except Exception as e2:
-                print(f"[PROPERTIES] ⚠️ Fallback delete also failed: {e2}")
         
         # 3. Delete saved properties (favorites)
         try:
             await db.delete("saved_properties", {"property_id": property_id})
-            print(f"[PROPERTIES] ✓ Deleted saved properties (favorites)")
         except Exception as e:
-            print(f"[PROPERTIES] ⚠️ Error deleting saved properties: {e}")
         
         # 4. Delete inquiries (must be deleted before property due to foreign key)
         try:
             inquiries_result = await db.delete("inquiries", {"property_id": property_id})
-            print(f"[PROPERTIES] ✓ Deleted inquiries: {inquiries_result}")
         except Exception as e:
-            print(f"[PROPERTIES] ⚠️ Error deleting inquiries (may not exist): {e}")
             try:
                 import traceback as tb
-                print(f"[PROPERTIES] Inquiries delete traceback: {tb.format_exc()}")
             except: pass
         
         # 5. Delete bookings (must be deleted before property due to foreign key)
         try:
             bookings_result = await db.delete("bookings", {"property_id": property_id})
-            print(f"[PROPERTIES] ✓ Deleted bookings: {bookings_result}")
         except Exception as e:
-            print(f"[PROPERTIES] ⚠️ Error deleting bookings (may not exist): {e}")
             try:
                 import traceback as tb
-                print(f"[PROPERTIES] Bookings delete traceback: {tb.format_exc()}")
             except: pass
         
         # 6. Delete property views
         try:
             await db.delete("property_views", {"property_id": property_id})
-            print(f"[PROPERTIES] ✓ Deleted property views")
         except Exception as e:
-            print(f"[PROPERTIES] ⚠️ Error deleting property views: {e}")
         
         # 7. Delete property viewings
         try:
             await db.delete("property_viewings", {"property_id": property_id})
-            print(f"[PROPERTIES] ✓ Deleted property viewings")
         except Exception as e:
-            print(f"[PROPERTIES] ⚠️ Error deleting property viewings: {e}")
         
         # 9. Delete agent property notifications
         try:
             await db.delete("agent_property_notifications", {"property_id": property_id})
-            print(f"[PROPERTIES] ✓ Deleted agent property notifications")
         except Exception as e:
-            print(f"[PROPERTIES] ⚠️ Error deleting agent notifications: {e}")
         
         # 10. Delete property assignment queue
         try:
             await db.delete("property_assignment_queue", {"property_id": property_id})
-            print(f"[PROPERTIES] ✓ Deleted property assignment queue")
         except Exception as e:
-            print(f"[PROPERTIES] ⚠️ Error deleting assignment queue: {e}")
         
         # 11. Delete maintenance requests
         try:
             await db.delete("maintenance_requests", {"property_id": property_id})
-            print(f"[PROPERTIES] ✓ Deleted maintenance requests")
         except Exception as e:
-            print(f"[PROPERTIES] ⚠️ Error deleting maintenance requests: {e}")
         
         # 12. Clear cache for this property
         try:
             # Clear all property-related cache entries
             if cache:
                 cache.clear()  # Clear entire cache to ensure property is removed
-                print(f"[PROPERTIES] ✓ Cleared cache")
             else:
-                print(f"[PROPERTIES] ⚠️ Cache not available, skipping")
         except Exception as e:
-            print(f"[PROPERTIES] ⚠️ Error clearing cache (non-critical): {e}")
             # Don't fail deletion if cache clearing fails
         
         # 13. Finally, delete the property itself
         try:
             delete_result = await db.delete("properties", {"id": property_id})
-            print(f"[PROPERTIES] ✓ Deleted property record: {delete_result}")
             if not delete_result or (isinstance(delete_result, list) and len(delete_result) == 0):
-                print(f"[PROPERTIES] ⚠️ Delete returned empty result - property may not exist or already deleted")
                 # Don't fail if property doesn't exist - it's already deleted
         except Exception as prop_delete_error:
             error_msg = str(prop_delete_error)
-            print(f"[PROPERTIES] ❌ Error deleting property record: {error_msg}")
             try:
                 import traceback as tb
-                print(f"[PROPERTIES] Property delete error traceback: {tb.format_exc()}")
             except: pass
             
             # Check if it's a foreign key constraint error
             error_lower = error_msg.lower()
             if "foreign key" in error_lower or "constraint" in error_lower:
                 # Try to get more info about what's blocking deletion
-                print(f"[PROPERTIES] Foreign key constraint detected. Checking related records...")
                 try:
                     remaining_inquiries = await db.select("inquiries", filters={"property_id": property_id}, limit=1)
                     remaining_bookings = await db.select("bookings", filters={"property_id": property_id}, limit=1)
                     if remaining_inquiries:
-                        print(f"[PROPERTIES] ⚠️ Still have {len(remaining_inquiries)} inquiries")
                     if remaining_bookings:
-                        print(f"[PROPERTIES] ⚠️ Still have {len(remaining_bookings)} bookings")
                 except Exception as check_error:
-                    print(f"[PROPERTIES] Could not check remaining records: {check_error}")
                 
                 detail = "Cannot delete property: it has related records that must be deleted first. Please try again."
             elif "not found" in error_lower or "does not exist" in error_lower:
@@ -2976,7 +2502,6 @@ async def delete_property(property_id: str, request: Request, _=Depends(require_
             
             raise HTTPException(status_code=500, detail=detail)
         
-        print(f"[PROPERTIES] ⚠️ PROPERTY COMPLETELY DELETED FROM WEBSITE: {property_id} ({property_title})")
         return {
             "success": True, 
             "message": f"Property '{property_title}' and all related data completely removed from website",
@@ -2997,16 +2522,12 @@ async def delete_property(property_id: str, request: Request, _=Depends(require_
         
     except HTTPException as http_exc:
         # Re-raise HTTPExceptions (they already have proper status codes)
-        print(f"[PROPERTIES] HTTPException during delete: {http_exc.status_code} - {http_exc.detail}")
         raise
     except Exception as e:
         # Catch all other exceptions and return proper error response
         error_msg = str(e)
-        print(f"[PROPERTIES] ❌ Delete property error: {error_msg}")
-        print(f"[PROPERTIES] Full traceback:")
         try:
             import traceback as tb
-            print(tb.format_exc())
         except: pass
         
         # Check for common database errors
@@ -3018,14 +2539,12 @@ async def delete_property(property_id: str, request: Request, _=Depends(require_
         else:
             detail = f"Error deleting property: {error_msg}"
         
-        print(f"[PROPERTIES] Raising HTTPException with detail: {detail}")
         raise HTTPException(status_code=500, detail=detail)
 
 @router.get("/{property_id}/images")
 async def get_property_images(property_id: str):
     """Get all images for a property from documents table"""
     try:
-        print(f"[PROPERTIES] Fetching images for property: {property_id}")
         
         # Check if property exists
         properties = await db.select("properties", filters={"id": property_id})
@@ -3053,7 +2572,6 @@ async def get_property_images(property_id: str):
                                 public_url = db.supabase_client.storage.from_('property-images').get_public_url(image_url)
                                 image_url = public_url
                             except Exception as url_error:
-                                print(f"[PROPERTIES] Failed to get public URL for {image_url}: {url_error}")
                                 # Try documents bucket as fallback
                                 try:
                                     public_url = db.supabase_client.storage.from_('documents').get_public_url(image_url)
@@ -3070,20 +2588,17 @@ async def get_property_images(property_id: str):
                             "created_at": doc.get('created_at')
                         })
         
-        print(f"[PROPERTIES] Found {len(images)} images for property {property_id}")
         return {"images": images}
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[PROPERTIES] Get images error: {e}")
         raise HTTPException(status_code=500, detail=f"Error fetching images: {str(e)}")
 
 @router.get("/{property_id}/contact")
 async def get_property_contact(property_id: str, request: Request = None, user_role: str = Query(None)):
     """Get contact information for a property - returns agent information only for logged-in buyers"""
     try:
-        print(f"[PROPERTIES] Getting contact info for property: {property_id}, role: {user_role}")
         
         # Check if user is authenticated and is a buyer
         is_authenticated_buyer = False
@@ -3105,7 +2620,6 @@ async def get_property_contact(property_id: str, request: Request = None, user_r
                             except Exception:
                                 is_authenticated_buyer = user_type == "buyer"
             except Exception as auth_error:
-                print(f"[PROPERTIES] Auth check failed: {auth_error}")
         
         if not is_authenticated_buyer:
             raise HTTPException(status_code=401, detail="Authentication required. Only logged-in buyers can view agent contact information.")
@@ -3137,7 +2651,6 @@ async def get_property_contact(property_id: str, request: Request = None, user_r
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[PROPERTIES] Get contact error: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get contact: {str(e)}")
 
 
@@ -3147,7 +2660,6 @@ async def get_property_contact(property_id: str, request: Request = None, user_r
 async def get_zipcode_location(zipcode: str):
     """Get complete location data for a zipcode - auto-populates form fields"""
     try:
-        print(f"[PROPERTIES] Fetching complete location data for zipcode: {zipcode}")
         
         from ..services.location_service import LocationService
         
@@ -3157,13 +2669,11 @@ async def get_zipcode_location(zipcode: str):
         if not location_data.get('auto_populated'):
             raise HTTPException(status_code=404, detail=f"No location data found for zipcode {zipcode}")
         
-        print(f"[PROPERTIES] Successfully fetched complete location data for zipcode {zipcode}")
         return location_data
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[PROPERTIES] Error fetching zipcode location: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch zipcode location: {str(e)}")
 
 @router.get("/zipcode/{zipcode}/suggestions", tags=["properties"])
@@ -3171,7 +2681,6 @@ async def get_zipcode_location(zipcode: str):
 async def get_zipcode_suggestions(zipcode: str):
     """Get suggested field values for a zipcode - for form auto-population"""
     try:
-        print(f"[PROPERTIES] Fetching suggestions for zipcode: {zipcode}")
         
         from ..services.location_service import LocationService
         
@@ -3200,16 +2709,12 @@ async def get_zipcode_suggestions(zipcode: str):
             "message": "These are suggested values. All fields can be edited."
         }
         
-        print(f"[PROPERTIES] Returning coordinates in suggestions: lat={suggested_fields.get('latitude')}, lng={suggested_fields.get('longitude')}")
-        print(f"[PROPERTIES] Returning coordinates in map_data: {coordinates}")
         
-        print(f"[PROPERTIES] Successfully fetched suggestions for zipcode {zipcode}")
         return suggestions
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[PROPERTIES] Error fetching zipcode suggestions: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch zipcode suggestions: {str(e)}")
 
 @router.post("/geocode/address", tags=["properties"])
@@ -3234,7 +2739,6 @@ async def geocode_address(address_data: dict):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[PROPERTIES] Error geocoding address: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to geocode address: {str(e)}")
 
 @router.post("/geocode/reverse", tags=["properties"])
@@ -3262,7 +2766,6 @@ async def reverse_geocode(coordinate_data: dict):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[PROPERTIES] Error reverse geocoding: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to reverse geocode: {str(e)}")
 
 @router.get("/places/autocomplete", tags=["properties"])
@@ -3281,7 +2784,6 @@ async def get_place_autocomplete(
             "suggestions": suggestions
         }
     except Exception as e:
-        print(f"[PROPERTIES] Error getting autocomplete: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get autocomplete: {str(e)}")
 
 @router.get("/places/{place_id}", tags=["properties"])
@@ -3302,20 +2804,17 @@ async def get_place_details(place_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[PROPERTIES] Error getting place details: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get place details: {str(e)}")
 
 @router.get("/filters/options", tags=["properties"])
 async def get_filter_options():
     """Get distinct filter values from database for search filters"""
     try:
-        print(f"[PROPERTIES] Fetching filter options from database")
         
         # Get all active properties
         properties = await db.admin_select("properties", filters={"status": "active"})
         
         if not properties:
-            print(f"[PROPERTIES] No properties found")
             return {
                 "property_types": [],
                 "states": [],
@@ -3345,24 +2844,20 @@ async def get_filter_options():
             "land_types": land_types
         }
         
-        print(f"[PROPERTIES] Filter options: {result}")
         return result
         
     except Exception as e:
-        print(f"[PROPERTIES] Error fetching filter options: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch filter options: {str(e)}")
 
 @router.get("/locations/{city}/mandals", tags=["properties"])
 async def get_mandals_for_city(city: str):
     """Get mandals with property counts for a specific city"""
     try:
-        print(f"[PROPERTIES] Fetching mandals for city: {city}")
         
         # Get all active properties in this city
         properties = await db.admin_select("properties", filters={"city": city, "status": "active"})
         
         if not properties:
-            print(f"[PROPERTIES] No properties found in city: {city}")
             return {
                 "city": city,
                 "mandals": [],
@@ -3388,9 +2883,7 @@ async def get_mandals_for_city(city: str):
             "total_properties": len(properties)
         }
         
-        print(f"[PROPERTIES] Found {len(mandals)} mandals in {city} with {len(properties)} total properties")
         return result
         
     except Exception as e:
-        print(f"[PROPERTIES] Error fetching mandals for city: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch mandals: {str(e)}")
