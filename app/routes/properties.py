@@ -294,7 +294,9 @@ async def get_properties(
                     
                     # Log sample properties for debugging
                     if len(filtered_properties) > 0:
+                        pass  # Properties found
                     else:
+                        pass  # No properties found
                 
                 # Apply status filter client-side (include active and pending by default)
                 prop_statuses = {}
