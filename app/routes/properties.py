@@ -504,9 +504,11 @@ async def get_properties(
                     raise
                 if all_properties_check and len(all_properties_check) > 0:
                     for i, prop in enumerate(all_properties_check[:3]):  # Show first 3
+                        pass  # Debug: log first 3 properties if needed
                     # Return the unfiltered properties for local development
                     return all_properties_check[:limit] if limit else all_properties_check
                 else:
+                    pass
             except Exception as check_error:
                 error_msg = str(check_error)
                 try:
