@@ -358,8 +358,11 @@ async def get_properties(
                     if count_result and len(count_result) > 0:
                         total_count = count_result[0].get('count', 0)
                         if total_count > 0:
+                            pass
                         else:
+                            pass
                     else:
+                        pass
                 except Exception as count_error:
                     error_msg = str(count_error)
                     if "getaddrinfo failed" in error_msg or "11001" in error_msg:
