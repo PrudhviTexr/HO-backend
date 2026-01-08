@@ -528,6 +528,7 @@ async def get_properties(
                 (min_price is None or (p.get('price') and p.get('price') >= min_price)) and
                 (max_price is None or (p.get('price') and p.get('price') <= max_price))]
             if len(properties) < initial_count:
+                pass  # Properties filtered
         
         if min_rent is not None or max_rent is not None:
             initial_count = len(properties)
@@ -535,6 +536,7 @@ async def get_properties(
                 (min_rent is None or (p.get('monthly_rent') and p.get('monthly_rent') >= min_rent)) and
                 (max_rent is None or (p.get('monthly_rent') and p.get('monthly_rent') <= max_rent))]
             if len(properties) < initial_count:
+                pass  # Properties filtered
         
         if min_area is not None or max_area is not None:
             initial_count = len(properties)
@@ -542,6 +544,7 @@ async def get_properties(
                 (min_area is None or (p.get('area_sqft') and p.get('area_sqft') >= min_area)) and
                 (max_area is None or (p.get('area_sqft') and p.get('area_sqft') <= max_area))]
             if len(properties) < initial_count:
+                pass  # Properties filtered
 
         # Note: Multiple property types are now filtered at database level using "in" filter
         # No need for client-side filtering here anymore
