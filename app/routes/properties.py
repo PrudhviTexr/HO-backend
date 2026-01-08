@@ -461,6 +461,7 @@ async def get_properties(
             
             # Try querying with explicit None to ensure no filters
             if not query_filters:
+                pass  # No filters - query will use None
             
             properties = await asyncio.wait_for(
                 db.select(
