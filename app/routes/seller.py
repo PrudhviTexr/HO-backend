@@ -23,9 +23,23 @@ async def get_seller_dashboard_stats(request: Request):
         
         print(f"[SELLER] Fetching dashboard stats for user: {user_id}")
         
-        # Get seller's properties - fetch all properties for accurate stats (no limit to ensure all are counted)
-        properties = await db.select("properties", filters={"added_by": user_id}, limit=10000)
-        properties_list = properties or []
+        # Get seller's properties - check both added_by, seller_id, and owner_id fields
+        # Some properties may use different field names for seller identification
+        properties_by_added_by = await db.select("properties", filters={"added_by": user_id}, limit=10000)
+        properties_by_seller_id = await db.select("properties", filters={"seller_id": user_id}, limit=10000)
+        properties_by_owner_id = await db.select("properties", filters={"owner_id": user_id}, limit=10000)
+        
+        # Combine and deduplicate properties
+        all_properties = (properties_by_added_by or []) + (properties_by_seller_id or []) + (properties_by_owner_id or [])
+        seen_ids = set()
+        properties_list = []
+        for prop in all_properties:
+            prop_id = prop.get("id")
+            if prop_id and prop_id not in seen_ids:
+                seen_ids.add(prop_id)
+                properties_list.append(prop)
+        
+        print(f"[SELLER] Found {len(properties_list)} properties for seller (added_by: {len(properties_by_added_by or [])}, seller_id: {len(properties_by_seller_id or [])}, owner_id: {len(properties_by_owner_id or [])})")
         
         # Calculate stats
         total_properties = len(properties_list)
@@ -550,11 +564,23 @@ async def get_seller_inquiries(
             # if not properties:
             #     return {"success": True, "inquiries": [], "total": 0}
         else:
-            # Get seller's property IDs - increase limit to get all properties for inquiries
+            # Get seller's property IDs - check all possible seller identification fields
             print(f"[SELLER] Fetching seller's properties...")
-            properties = await db.select("properties", filters={"added_by": user_id}, limit=1000)  # Increased to get all properties
-            property_ids = [p.get("id") for p in (properties or [])]
-            print(f"[SELLER] Found {len(property_ids)} properties for seller")
+            properties_by_added_by = await db.select("properties", filters={"added_by": user_id}, limit=1000)
+            properties_by_seller_id = await db.select("properties", filters={"seller_id": user_id}, limit=1000)
+            properties_by_owner_id = await db.select("properties", filters={"owner_id": user_id}, limit=1000)
+            
+            # Combine and deduplicate
+            all_properties = (properties_by_added_by or []) + (properties_by_seller_id or []) + (properties_by_owner_id or [])
+            seen_ids = set()
+            property_ids = []
+            for prop in all_properties:
+                prop_id = prop.get("id")
+                if prop_id and prop_id not in seen_ids:
+                    seen_ids.add(prop_id)
+                    property_ids.append(prop_id)
+            
+            print(f"[SELLER] Found {len(property_ids)} properties for seller (added_by: {len(properties_by_added_by or [])}, seller_id: {len(properties_by_seller_id or [])}, owner_id: {len(properties_by_owner_id or [])})")
             
             if not property_ids:
                 print(f"[SELLER] No properties found for seller, returning empty inquiries")
@@ -762,11 +788,23 @@ async def get_seller_bookings(
                 print(f"[SELLER] Property {property_id} does not belong to seller {user_id}")
                 return {"success": True, "bookings": [], "total": 0}
         else:
-            # Get seller's property IDs - increase limit to get all properties
+            # Get seller's property IDs - check all possible seller identification fields
             print(f"[SELLER] Fetching seller's properties...")
-            properties = await db.select("properties", filters={"added_by": user_id}, limit=1000)  # Increased to get all properties
-            property_ids = [p.get("id") for p in (properties or [])]
-            print(f"[SELLER] Found {len(property_ids)} properties for seller")
+            properties_by_added_by = await db.select("properties", filters={"added_by": user_id}, limit=1000)
+            properties_by_seller_id = await db.select("properties", filters={"seller_id": user_id}, limit=1000)
+            properties_by_owner_id = await db.select("properties", filters={"owner_id": user_id}, limit=1000)
+            
+            # Combine and deduplicate
+            all_properties = (properties_by_added_by or []) + (properties_by_seller_id or []) + (properties_by_owner_id or [])
+            seen_ids = set()
+            property_ids = []
+            for prop in all_properties:
+                prop_id = prop.get("id")
+                if prop_id and prop_id not in seen_ids:
+                    seen_ids.add(prop_id)
+                    property_ids.append(prop_id)
+            
+            print(f"[SELLER] Found {len(property_ids)} properties for seller (added_by: {len(properties_by_added_by or [])}, seller_id: {len(properties_by_seller_id or [])}, owner_id: {len(properties_by_owner_id or [])})")
             
             if not property_ids:
                 print(f"[SELLER] No properties found for seller, returning empty bookings")

@@ -383,10 +383,12 @@ async def get_properties(
             # Only apply status filter if it's explicitly set and not "all"
             if status.lower() == 'active':
                 # For "active", include active, pending, and pending_unassigned (all visible properties)
+                pass
             else:
                 base_filters['status'] = status.lower()
         else:
             # No status filter - include all statuses (active, pending, pending_unassigned) except sold/rented/withdrawn/inactive
+            pass
         
         # Only apply essential filters if explicitly requested
         if owner_id:
