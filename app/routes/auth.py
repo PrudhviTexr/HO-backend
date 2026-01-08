@@ -1251,6 +1251,8 @@ async def forgot_password(request: Request) -> Dict[str, Any]:
         email = body.get("email", "").lower().strip()
         user_type = body.get("user_type", "").lower().strip()  # Get requested user type
         
+        print(f"[FORGOT-PASSWORD] Received request for email: {email}")
+        
         if not email:
             raise HTTPException(status_code=400, detail="Email is required")
         
@@ -1273,6 +1275,8 @@ async def forgot_password(request: Request) -> Dict[str, Any]:
         user_id = user["id"]
         actual_user_type = user.get("user_type", "buyer").lower()
         
+        print(f"[FORGOT-PASSWORD] Found user: {user_id}, type: {actual_user_type}")
+        
         # Validate that the user's role matches the requested role (if user_type is provided)
         if user_type and actual_user_type != user_type:
 
@@ -1288,11 +1292,22 @@ async def forgot_password(request: Request) -> Dict[str, Any]:
             )
         
         # Send OTP via email for password reset
-        from ..services.otp_service import send_email_otp
-        
-        otp_token = await send_email_otp(email, "password_reset")
-        
-        
+        try:
+            from ..services.otp_service import send_email_otp
+            
+            print(f"[FORGOT-PASSWORD] Attempting to send OTP to {email}")
+            otp_token = await send_email_otp(email, "password_reset")
+            print(f"[FORGOT-PASSWORD] OTP sent successfully")
+        except Exception as otp_error:
+            print(f"[FORGOT-PASSWORD] Error sending OTP: {str(otp_error)}")
+            raise HTTPException(
+                status_code=500, 
+                detail={
+                    "message": "Failed to send OTP email. Please try again later.",
+                    "error": str(otp_error)
+                }
+            )
+
 
         return {
             "success": True,
@@ -1303,7 +1318,16 @@ async def forgot_password(request: Request) -> Dict[str, Any]:
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Failed to process password reset request")
+        print(f"[FORGOT-PASSWORD] Unexpected error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500, 
+            detail={
+                "message": "Failed to process password reset request",
+                "error": str(e)
+            }
+        )
 
 
 @router.post("/reset-password")
