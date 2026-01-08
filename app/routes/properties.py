@@ -514,6 +514,7 @@ async def get_properties(
                 try:
                     import traceback as tb
                 except Exception as tb_err:
+                    pass  # Ignore traceback import errors
                 # If it's a database connection error, return empty array immediately
                 if "getaddrinfo failed" in error_msg or "11001" in error_msg:
                     return []
