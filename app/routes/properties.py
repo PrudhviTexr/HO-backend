@@ -279,6 +279,7 @@ async def get_properties(
                         if len(filtered_properties) == 0:
                             # Show sample from original list to help debug
                             for i, p in enumerate(filtered_properties[:5] if len(filtered_properties) > 0 else all_properties_direct[:5]):
+                                pass  # Debug placeholder
                     elif featured is False or featured == "false" or str(featured).lower() == 'false':
                         filtered_properties = [p for p in filtered_properties 
                                              if (p.get('featured') == False 
