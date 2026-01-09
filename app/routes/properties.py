@@ -806,6 +806,7 @@ async def create_property(request: Request):
                         if users:
                             user_type = users[0].get("user_type", "").lower()
                     except Exception as user_error:
+                        pass
                     
                     # Set owner_id, seller_id, and added_by based on user type
                     # CRITICAL: 
