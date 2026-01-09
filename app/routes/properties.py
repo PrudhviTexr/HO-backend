@@ -878,8 +878,10 @@ async def create_property(request: Request):
                                 property_data['added_by'] = user_id
                         except (ValueError, TypeError):
                             # Don't set owner_id or added_by if user_id is not a valid UUID
+                            pass
             except Exception as auth_error:
                 # Continue without user_id if auth fails
+                pass
         
         # Validate that owner_id is provided if it's required
         # For dev-admin or other cases where owner_id might not be set, check if it's required
@@ -887,6 +889,7 @@ async def create_property(request: Request):
             # Try to find a default owner or raise an error
             # For now, we'll allow it to be None and let the database handle it
             # If the database requires it, the insert will fail with a clear error
+            pass
         
         # Generate unique ID
         property_id = str(uuid.uuid4())
