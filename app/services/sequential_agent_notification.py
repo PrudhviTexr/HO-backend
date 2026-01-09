@@ -206,10 +206,11 @@ class SequentialAgentNotificationService:
             traceback.print_exc()
 
     @staticmethod
-    async def _get_next_agent(property_id: str, queue_data: Dict[str, Any]) -> Optional[str]:
+    async def _get_next_agent(property_id: str, queue_data: Dict[str, Any], max_iterations: int = 100) -> Optional[str]:
         """
         Gets the next agent in a round-robin fashion.
         Increments the round if all agents in the current round have been notified.
+        Excludes agents who have already rejected this property.
         """
         agent_list = queue_data.get("agent_list", [])
         if not agent_list:
@@ -217,25 +218,47 @@ class SequentialAgentNotificationService:
 
         last_notified_index = queue_data.get("last_notified_index", -1)
         current_round = queue_data.get("current_round", 1)
+        iterations = 0
 
         if current_round > 3:
             return None # Max rounds reached
 
-        next_index = (last_notified_index + 1) % len(agent_list)
+        # Try to find next available agent (skip rejected ones)
+        while iterations < max_iterations:
+            iterations += 1
+            next_index = (last_notified_index + 1) % len(agent_list)
 
-        # If we have looped back to the start, it's time for the next round
-        if next_index == 0 and last_notified_index != -1:
-            current_round += 1
-            if current_round > 3:
-                return None # Max rounds reached
-            await db.update("property_assignment_queue", {"current_round": current_round}, {"id": queue_data["id"]})
+            # If we have looped back to the start, it's time for the next round
+            if next_index == 0 and last_notified_index != -1:
+                current_round += 1
+                if current_round > 3:
+                    return None # Max rounds reached
+                await db.update("property_assignment_queue", {"current_round": current_round}, {"id": queue_data["id"]})
 
-        next_agent_id = agent_list[next_index].get("id")
+            next_agent_id = agent_list[next_index].get("id")
+            
+            # CRITICAL: Check if this agent has already rejected this property
+            # If so, skip to the next agent
+            if next_agent_id:
+                rejected_notifications = await db.select("agent_property_notifications", filters={
+                    "property_id": property_id,
+                    "agent_id": next_agent_id,
+                    "status": "rejected"
+                })
+                
+                if rejected_notifications and len(rejected_notifications) > 0:
+                    print(f"[QUEUE] Agent {next_agent_id} has already rejected property {property_id}, skipping to next agent")
+                    # Skip this agent and try the next one
+                    last_notified_index = next_index
+                    continue  # Try next agent
+            
+            # Found an agent who hasn't rejected - update queue and return
+            await db.update("property_assignment_queue", {"last_notified_index": next_index}, {"id": queue_data["id"]})
+            return next_agent_id
         
-        # Update the queue with the index of the agent we are about to notify
-        await db.update("property_assignment_queue", {"last_notified_index": next_index}, {"id": queue_data["id"]})
-        
-        return next_agent_id
+        # If we've tried all agents and they've all rejected, return None
+        print(f"[QUEUE] All agents have rejected property {property_id} or max iterations reached")
+        return None
     
     @staticmethod
     async def _send_notification_to_agent(

@@ -829,6 +829,7 @@ async def create_property(request: Request):
                             # Agent is creating property on behalf of someone else
                             # owner_id will be set to null or provided owner_id, owner details stored in nested object
                             # Don't set owner_id here - let it be null or use provided owner_id
+                            pass
                         else:
                             # Agent is creating property for themselves - agent is the owner
                             if not property_data.get('owner_id'):
@@ -851,6 +852,7 @@ async def create_property(request: Request):
                                 property_data['owner_id'] = user_id
                             except (ValueError, TypeError):
                                 # Don't set owner_id - it must be provided from the form or will be null
+                                pass
                         
                         # Only set added_by if user_id is a valid UUID
                         if not property_data.get('added_by'):
@@ -859,6 +861,7 @@ async def create_property(request: Request):
                                 property_data['added_by'] = user_id
                             except (ValueError, TypeError):
                                 # Don't set added_by if user_id is not a valid UUID
+                                pass
                         
                         # assigned_agent_id can be set from form by admin
                         if property_data.get('assigned_agent_id'):
