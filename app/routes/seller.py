@@ -118,17 +118,20 @@ async def get_seller_properties(
         
         print(f"[SELLER] Fetching properties for user: {user_id}")
         
-        # Build filters - only show properties added by seller
-        filters = {"added_by": user_id}
+        # Build filters - show properties added by seller OR owned by seller OR seller_id matches
+        # This ensures properties remain visible even after admin edits
+        # Use OR condition: added_by OR owner_id OR seller_id
+        filters = {}
         if status:
             filters["status"] = status
         
-        # Get properties with timeout
+        # Get properties with timeout - fetch more to account for filtering
         import asyncio
         try:
+            # Fetch properties with higher limit to account for filtering
             properties = await asyncio.wait_for(
-                db.select("properties", filters=filters, limit=limit, offset=offset, order_by="created_at", ascending=False),
-                    timeout=1.5  # 1.5 second timeout for faster response
+                db.select("properties", filters=filters, limit=limit * 3, offset=0, order_by="created_at", ascending=False),
+                    timeout=2.0  # Slightly longer timeout for larger fetch
             )
         except asyncio.TimeoutError:
             print(f"[SELLER] Properties query timeout for user: {user_id}")
@@ -136,12 +139,24 @@ async def get_seller_properties(
         
         properties_list = properties or []
         
-        # Filter out BUY listing type properties - sellers should only see their own properties for sale/rent
-        properties_list = [p for p in properties_list if p.get("listing_type") != "BUY"]
+        # Filter to show only properties where seller is the creator OR owner OR seller_id matches
+        # This ensures properties remain visible after admin edits
+        properties_list = [
+            p for p in properties_list 
+            if (p.get("added_by") == user_id or 
+                p.get("owner_id") == user_id or 
+                p.get("seller_id") == user_id) and
+               p.get("listing_type") != "BUY"  # Filter out BUY listing type
+        ]
         
-        # Apply offset manually if needed (for pagination)
+        # Get total count before pagination
+        total_count = len(properties_list)
+        
+        # Apply pagination after filtering
         if offset and offset > 0:
             properties_list = properties_list[offset:]
+        if limit:
+            properties_list = properties_list[:limit]
         
         # Batch fetch all related data to avoid N+1 queries (major performance optimization)
         property_ids = [p.get("id") for p in properties_list if p.get("id")]
@@ -516,7 +531,7 @@ async def get_seller_properties(
             enhanced_properties.append(enhanced_property)
         
         print(f"[SELLER] Found {len(enhanced_properties)} properties")
-        return {"success": True, "properties": enhanced_properties, "total": len(enhanced_properties)}
+        return {"success": True, "properties": enhanced_properties, "total": total_count}
         
     except HTTPException:
         raise

@@ -984,23 +984,24 @@ async def get_agent_properties(
         print(f"[AGENT] Fetching properties for user: {user_id}")
         print(f"[AGENT] Agent ID (user_id): {user_id}")
         
-        # Get agent's ASSIGNED properties only (not properties they just own)
-        # Agents should only see properties where they are assigned as the agent
-        # 1. agent_id - legacy field for assignment
-        # 2. assigned_agent_id - current field for assignment
-        # NOTE: We do NOT include owner_id - agents should only see assigned properties, not properties they own
-        print(f"[AGENT] Querying ASSIGNED properties only: agent_id={user_id} OR assigned_agent_id={user_id}")
+        # Get agent's ASSIGNED properties OR properties added by agent
+        # Agents should see:
+        # 1. Properties assigned to them (agent_id or assigned_agent_id)
+        # 2. Properties they created (added_by)
+        # This ensures properties remain visible after admin edits
+        print(f"[AGENT] Querying properties: agent_id={user_id} OR assigned_agent_id={user_id} OR added_by={user_id}")
         
         import asyncio
         try:
-            # Use OR query to get all assigned properties in one call with timeout
+            # Use OR query to get all relevant properties in one call with timeout
             unique_properties = await asyncio.wait_for(
                 db.select(
                     "properties", 
                     filters={
                         "or": [
                             {"agent_id": user_id},
-                            {"assigned_agent_id": user_id}
+                            {"assigned_agent_id": user_id},
+                            {"added_by": user_id}  # Include properties created by agent
                         ]
                     },
                     limit=min(limit or 100, 200),  # Reduced limit for performance
@@ -1011,7 +1012,7 @@ async def get_agent_properties(
                 timeout=2.0  # 2 second timeout
             )
             unique_properties = unique_properties or []
-            print(f"[AGENT] OR query returned {len(unique_properties)} ASSIGNED properties")
+            print(f"[AGENT] OR query returned {len(unique_properties)} properties (assigned + created)")
             
             # Log assignment breakdown for debugging
             if unique_properties:
@@ -1025,12 +1026,13 @@ async def get_agent_properties(
             unique_properties = []
         except Exception as or_error:
             print(f"[AGENT] OR query failed, falling back to separate queries: {or_error}")
-            # Fallback to separate queries - ONLY assigned properties with timeout
+            # Fallback to separate queries - assigned properties + properties created by agent
             try:
-                properties_agent_id, properties_assigned_id = await asyncio.wait_for(
+                properties_agent_id, properties_assigned_id, properties_added_by = await asyncio.wait_for(
                     asyncio.gather(
                         db.select("properties", filters={"agent_id": user_id}, limit=min(limit or 100, 200), offset=offset, order_by="created_at", ascending=False),
                         db.select("properties", filters={"assigned_agent_id": user_id}, limit=min(limit or 100, 200), offset=offset, order_by="created_at", ascending=False),
+                        db.select("properties", filters={"added_by": user_id}, limit=min(limit or 100, 200), offset=offset, order_by="created_at", ascending=False),
                         return_exceptions=True
                     ),
                     timeout=2.0
@@ -1039,16 +1041,20 @@ async def get_agent_properties(
                     properties_agent_id = []
                 if isinstance(properties_assigned_id, Exception):
                     properties_assigned_id = []
+                if isinstance(properties_added_by, Exception):
+                    properties_added_by = []
             except asyncio.TimeoutError:
                 print(f"[AGENT] Fallback queries timeout for user: {user_id}")
                 properties_agent_id = []
                 properties_assigned_id = []
+                properties_added_by = []
             
             print(f"[AGENT] Properties with agent_id: {len(properties_agent_id or [])}")
             print(f"[AGENT] Properties with assigned_agent_id: {len(properties_assigned_id or [])}")
+            print(f"[AGENT] Properties with added_by: {len(properties_added_by or [])}")
             
-            # Combine only assigned properties (NOT owner_id)
-            all_properties = (properties_agent_id or []) + (properties_assigned_id or [])
+            # Combine assigned properties + properties created by agent
+            all_properties = (properties_agent_id or []) + (properties_assigned_id or []) + (properties_added_by or [])
             unique_properties = []
             seen_ids = set()
             
@@ -1058,7 +1064,7 @@ async def get_agent_properties(
                     seen_ids.add(prop_id)
                     unique_properties.append(prop)
         
-        print(f"[AGENT] Found {len(unique_properties)} total unique assigned properties")
+        print(f"[AGENT] Found {len(unique_properties)} total unique properties (assigned + created)")
         if len(unique_properties) > 0:
             print(f"[AGENT] Sample property IDs: {[p.get('id')[:8] if p.get('id') else 'N/A' for p in unique_properties[:3]]}")
             # Debug: Show assignment details for first property

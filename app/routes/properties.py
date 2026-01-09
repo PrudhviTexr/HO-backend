@@ -2208,6 +2208,20 @@ async def update_property(property_id: str, update_data: dict, request: Request 
                 update_data['agent_id'] = None
                 update_data['assigned_agent_id'] = None
         
+        # CRITICAL: Preserve added_by field if not provided in update_data
+        # This ensures properties remain visible to their original creators (seller/agent) after admin edits
+        if 'added_by' not in update_data or not update_data.get('added_by'):
+            if existing_property.get('added_by'):
+                update_data['added_by'] = existing_property['added_by']
+                print(f"[PROPERTIES] Preserving added_by field: {existing_property['added_by']}")
+        
+        # Also preserve seller_id and owner_id if they exist and are not being changed
+        if 'seller_id' not in update_data and existing_property.get('seller_id'):
+            # Only preserve if owner_id matches seller_id (property belongs to seller)
+            if existing_property.get('owner_id') == existing_property.get('seller_id'):
+                update_data['seller_id'] = existing_property['seller_id']
+                print(f"[PROPERTIES] Preserving seller_id field: {existing_property['seller_id']}")
+        
         # Filter update_data to only include valid database columns
         filtered_update_data = {}
         for key, value in update_data.items():
