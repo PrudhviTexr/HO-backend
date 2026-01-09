@@ -2570,8 +2570,11 @@ async def delete_property(property_id: str, request: Request, _=Depends(require_
                     remaining_inquiries = await db.select("inquiries", filters={"property_id": property_id}, limit=1)
                     remaining_bookings = await db.select("bookings", filters={"property_id": property_id}, limit=1)
                     if remaining_inquiries:
+                        print(f"[DELETE] Property has {len(remaining_inquiries)} inquiries remaining")
                     if remaining_bookings:
+                        print(f"[DELETE] Property has {len(remaining_bookings)} bookings remaining")
                 except Exception as check_error:
+                    print(f"[DELETE] Error checking remaining records: {check_error}")
                 
                 detail = "Cannot delete property: it has related records that must be deleted first. Please try again."
             elif "not found" in error_lower or "does not exist" in error_lower:
@@ -2699,6 +2702,8 @@ async def get_property_contact(property_id: str, request: Request = None, user_r
                             except Exception:
                                 is_authenticated_buyer = user_type == "buyer"
             except Exception as auth_error:
+                print(f"[CONTACT] Auth error: {auth_error}")
+                pass
         
         if not is_authenticated_buyer:
             raise HTTPException(status_code=401, detail="Authentication required. Only logged-in buyers can view agent contact information.")
