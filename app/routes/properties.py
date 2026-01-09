@@ -658,7 +658,7 @@ async def get_properties(
             # If no status filter or status='all', show active, pending, and pending_unassigned
             elif not status or status.lower() in ['all', '*', '']:
                 if prop_status not in ['active', 'pending', 'pending_unassigned']:
-                    if prop_status not in ['sold', 'rented', 'withdrawn', 'inactive']:  # Already filtered above
+                    continue
             # If specific status requested, only show that status
             elif status and status.lower() not in ['all', '*', '']:
                 if prop_status != status.lower():
@@ -687,9 +687,11 @@ async def get_properties(
                         batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
                         for result in batch_results:
                             if isinstance(result, Exception):
+                                pass
                             elif result:
                                 all_image_docs.extend(result)
                     except Exception as batch_error:
+                        pass
                 
                 # Group images by property_id (separate cover photos from regular images)
                 images_by_property = {}
@@ -744,6 +746,7 @@ async def get_properties(
                     if not prop.get('cover_photo_url') and prop.get('images') and len(prop.get('images', [])) > 0:
                         prop['cover_photo_url'] = prop['images'][0]
             except Exception as img_err:
+                pass
         
         # Add formatted pricing display to each property (single loop)
         for prop in filtered_properties:
@@ -755,6 +758,7 @@ async def get_properties(
             if offset == 0 and cache_key:
                 cache.set(cache_key, filtered_properties, ttl=300)  # Cache for 5 minutes
         except Exception as cache_error:
+            pass
         
         total_elapsed = (time.time() - start_time) * 1000
         
@@ -1543,8 +1547,11 @@ async def create_property(request: Request):
                 from ..services.agent_assignment import AgentAssignmentService
                 assignment_result = await AgentAssignmentService.assign_agent_to_property(property_id)
                 if assignment_result.get('success'):
+                    pass
                 else:
+                    pass
             except Exception as agent_error:
+                pass
         
         # Handle sections separately if provided
         if sections_data is not None:
@@ -1667,10 +1674,12 @@ async def create_property(request: Request):
                     if users:
                         user_data = users[0]
                 except Exception as user_error:
+                    pass
             
             await AdminNotificationService.notify_property_submission(property_data, user_data)
         except Exception as notify_error:
             # Don't fail property creation if notification fails
+            pass
         
         return {"id": property_id, "message": "Property created successfully"}
             
