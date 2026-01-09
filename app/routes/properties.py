@@ -769,6 +769,7 @@ async def get_properties(
         try:
             import traceback as tb
         except Exception as tb_err:
+            pass
         
         # Check for database connection errors
         if "getaddrinfo failed" in error_msg or "11001" in error_msg:
@@ -1527,6 +1528,7 @@ async def create_property(request: Request):
                 if saved_property and len(saved_property) > 0:
                     prop = saved_property[0]
                 else:
+                    pass
             except Exception as verify_error:
                 try:
                     import traceback as tb
@@ -1537,6 +1539,7 @@ async def create_property(request: Request):
                 import traceback as tb
             except: pass
             for key, value in list(property_data.items())[:10]:  # Print first 10 fields
+                pass
             # Re-raise the error so it's caught by the outer exception handler
             raise
         
