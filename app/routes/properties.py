@@ -1133,10 +1133,12 @@ async def create_property(request: Request):
             except Exception as location_error:
                 # Don't fail property creation if zipcode lookup fails
                 # Just log the error and continue
+                pass
         
         # DO NOT set default coordinates - coordinates must come from map picker
         # If coordinates are missing, they will be None (user must set via map)
         if property_data.get('latitude') is None or property_data.get('longitude') is None:
+            pass
         
         # Remove sections from property_data as it's handled separately
         sections_data = property_data.pop('sections', None)
@@ -1266,6 +1268,7 @@ async def create_property(request: Request):
                 # CRITICAL: For area_sqft, don't overwrite if it's already set (we set it to 0 for special property types)
                 if db_field == 'area_sqft' and property_data.get('area_sqft') is not None and property_data.get('area_sqft') != '':
                     # Don't overwrite area_sqft if it's already set (we set it to 0 for special property types)
+                    pass
                 elif db_field not in property_data:  # Only map if target field doesn't exist
                     property_data[db_field] = property_data[ui_field]
                 del property_data[ui_field]
@@ -1441,6 +1444,7 @@ async def create_property(request: Request):
                     import time
                     property_data['custom_id'] = f"PROP{int(time.time() * 1000) % 100000000:08d}"
             else:
+                pass
             
             # FINAL CHECK: Convert all empty strings in ALL numeric fields to None before insert
             # PostgreSQL cannot accept empty strings for numeric (integer or float) fields
@@ -1613,10 +1617,13 @@ async def create_property(request: Request):
                                 "id": doc["id"]
                             })
                         except Exception as link_error:
+                            pass
                 else:
+                    pass
         except Exception as link_images_error:
             import traceback
             # Don't fail property creation if image linking fails
+            pass
         
         # Send property submission email to user
         try:
@@ -1671,6 +1678,7 @@ async def create_property(request: Request):
                         html=email_html
                     )
         except Exception as email_error:
+            pass
         
         # Send admin notification for new property submission
         try:
@@ -1819,6 +1827,7 @@ async def _process_single_property(property_data: dict, show_agent_info: bool = 
                     owner = dict(owners[0])
                     property_data['owner']['email'] = owner.get('email', '')
             except Exception as e:
+                pass
     else:
         # Try to fetch owner from owner_id or added_by
         owner_id = property_data.get('owner_id') or property_data.get('added_by')
@@ -1879,11 +1888,14 @@ async def _process_single_property(property_data: dict, show_agent_info: bool = 
                     'phone_number': agent.get('phone_number') or agent.get('phone'),
                 }
             else:
+                pass
         except Exception as e:
             pass # Ignore agent fetch errors
     else:
         if not show_agent_info:
+            pass
         elif not agent_id:
+            pass
 
     # Fetch images if empty
     if not property_data.get('images'):
@@ -1954,6 +1966,7 @@ async def _process_single_property(property_data: dict, show_agent_info: bool = 
                                 pass
                     property_data['cover_photo_url'] = image_url
         except Exception as cover_err:
+            pass
 
     # Ensure coordinates
     if property_data.get('latitude') is None or property_data.get('longitude') is None:
@@ -1975,6 +1988,7 @@ async def update_property(property_id: str, update_data: dict, request: Request 
         array_fields = ['images', 'amenities', 'room_images', 'gated_community_features']
         for field in array_fields:
             if field in update_data:
+                pass
         
         # Check if property exists
         existing_properties = await db.select("properties", filters={"id": property_id})
@@ -2124,6 +2138,7 @@ async def update_property(property_id: str, update_data: dict, request: Request 
         # DO NOT set default coordinates - coordinates must come from map picker
         # If coordinates are missing, they will be None (user must set via map)
         if update_data.get('latitude') is None or update_data.get('longitude') is None:
+            pass
         
         # Remove sections from update_data as it's handled separately
         sections_data = update_data.pop('sections', None)
@@ -2248,7 +2263,9 @@ async def update_property(property_id: str, update_data: dict, request: Request 
                 filtered_update_data[key] = value
                 # Debug: Log area_unit specifically
                 if key == 'area_unit':
+                    pass
             else:
+                pass
         
         # Handle array fields that exist in the database as PostgreSQL arrays (TEXT[])
         # These should be sent as native arrays, not JSON strings
@@ -2287,6 +2304,7 @@ async def update_property(property_id: str, update_data: dict, request: Request 
             # Debug: Print what we're sending to database
             for field in array_fields:
                 if field in filtered_update_data:
+                    pass
             
             # Remove None values to avoid database issues, but allow None for agent_id/assigned_agent_id to clear assignments
             clean_update_data = {}
@@ -2382,6 +2400,7 @@ async def update_property(property_id: str, update_data: dict, request: Request 
                         "property": property_data
                     }
             except Exception as fetch_error:
+                pass
             
             return {"message": "Property updated successfully"}
             
@@ -2454,6 +2473,7 @@ async def delete_property(property_id: str, request: Request, _=Depends(require_
         try:
             await db.delete("property_sections", {"property_id": property_id})
         except Exception as e:
+            pass
         
         # 2. Delete documents/images related to property
         try:
@@ -2464,16 +2484,19 @@ async def delete_property(property_id: str, request: Request, _=Depends(require_
             try:
                 docs_result = await db.delete("documents", {"entity_id": property_id})
             except Exception as e2:
+                pass
         
         # 3. Delete saved properties (favorites)
         try:
             await db.delete("saved_properties", {"property_id": property_id})
         except Exception as e:
+            pass
         
         # 4. Delete inquiries (must be deleted before property due to foreign key)
         try:
             inquiries_result = await db.delete("inquiries", {"property_id": property_id})
         except Exception as e:
+            pass
             try:
                 import traceback as tb
             except: pass
@@ -2490,26 +2513,31 @@ async def delete_property(property_id: str, request: Request, _=Depends(require_
         try:
             await db.delete("property_views", {"property_id": property_id})
         except Exception as e:
+            pass
         
         # 7. Delete property viewings
         try:
             await db.delete("property_viewings", {"property_id": property_id})
         except Exception as e:
+            pass
         
         # 9. Delete agent property notifications
         try:
             await db.delete("agent_property_notifications", {"property_id": property_id})
         except Exception as e:
+            pass
         
         # 10. Delete property assignment queue
         try:
             await db.delete("property_assignment_queue", {"property_id": property_id})
         except Exception as e:
+            pass
         
         # 11. Delete maintenance requests
         try:
             await db.delete("maintenance_requests", {"property_id": property_id})
         except Exception as e:
+            pass
         
         # 12. Clear cache for this property
         try:
@@ -2517,14 +2545,17 @@ async def delete_property(property_id: str, request: Request, _=Depends(require_
             if cache:
                 cache.clear()  # Clear entire cache to ensure property is removed
             else:
+                pass
         except Exception as e:
             # Don't fail deletion if cache clearing fails
+            pass
         
         # 13. Finally, delete the property itself
         try:
             delete_result = await db.delete("properties", {"id": property_id})
             if not delete_result or (isinstance(delete_result, list) and len(delete_result) == 0):
                 # Don't fail if property doesn't exist - it's already deleted
+                pass
         except Exception as prop_delete_error:
             error_msg = str(prop_delete_error)
             try:
