@@ -298,28 +298,38 @@ async def get_properties(
                     else:
                         pass  # No properties found
                 
-                # Apply status filter client-side (include active and pending by default)
+                # CRITICAL: Filter out unverified properties (require admin approval)
+                # Only skip this check if explicitly requested via include_unverified=True
+                if not include_unverified:
+                    before_verified_filter = len(filtered_properties)
+                    filtered_properties = [p for p in filtered_properties 
+                                         if (p.get('verified') is True or 
+                                            p.get('verified') == "true" or 
+                                            str(p.get('verified', '')).lower() == 'true' or
+                                            p.get('verified') == 1 or
+                                            p.get('verified') == "1")]
+                
+                # Apply status filter client-side
                 prop_statuses = {}
                 for p in filtered_properties:
                     s = p.get('status', '').lower() if p.get('status') else 'none'
                     prop_statuses[s] = prop_statuses.get(s, 0) + 1
                 
-                # Only apply status filter if status parameter is explicitly provided
-                # Otherwise, include all statuses except sold/rented/withdrawn/inactive
+                # CRITICAL: Only show active properties by default (approved properties)
                 if status and status.lower() not in ['all', '*', '']:
                     before_status_filter = len(filtered_properties)
                     if status.lower() == 'active':
-                        # For 'active', include 'active', 'pending', and 'pending_unassigned'
+                        # Only show active properties (approved)
                         filtered_properties = [p for p in filtered_properties 
-                                             if p.get('status', '').lower() in ['active', 'pending', 'pending_unassigned']]
+                                             if p.get('status', '').lower() == 'active']
                     else:
                         filtered_properties = [p for p in filtered_properties 
                                              if p.get('status', '').lower() == status.lower()]
                 else:
-                    # Default: Filter out sold/rented/withdrawn/inactive, but keep active, pending, and pending_unassigned
+                    # Default: Only show active properties (approved and active)
                     before_status_filter = len(filtered_properties)
                     filtered_properties = [p for p in filtered_properties 
-                                         if p.get('status', '').lower() not in ['sold', 'rented', 'withdrawn', 'inactive']]
+                                         if p.get('status', '').lower() == 'active']
                 
                 if property_type:
                     filtered_properties = [p for p in filtered_properties if p.get('property_type') == property_type]
@@ -431,6 +441,25 @@ async def get_properties(
             base_filters['city'] = city
         if state:
             base_filters['state'] = state
+        
+        # CRITICAL: Only show verified properties by default (admin approval required)
+        # Unless explicitly requested to include unverified (for admin/internal use only)
+        if not include_unverified:
+            # Default behavior: Only show verified properties
+            if verified is None:
+                base_filters['verified'] = True
+            elif verified is not None:
+                base_filters['verified'] = verified
+        elif include_unverified and verified is not None:
+            # If include_unverified=True but verified is explicitly set, use that value
+            base_filters['verified'] = verified
+        
+        # CRITICAL: Only show active properties by default (approved and active)
+        if status is None:
+            base_filters['status'] = 'active'
+        elif status:
+            base_filters['status'] = status
+        
         # Note: Price/rent/area range filters will be applied client-side after fetching
         # This is more efficient than complex DB queries for ranges
 
@@ -643,6 +672,18 @@ async def get_properties(
                     if furnishing_filter not in prop_furnishing and prop_furnishing not in furnishing_filter:
                         continue
 
+            # CRITICAL: Filter out unverified properties (require admin approval)
+            # Only skip this check if explicitly requested via include_unverified=True
+            if not include_unverified:
+                prop_verified = enhanced_prop.get('verified', False)
+                # Handle different boolean representations (True, "true", 1, etc.)
+                if not (prop_verified is True or 
+                       prop_verified == "true" or 
+                       str(prop_verified).lower() == 'true' or
+                       prop_verified == 1 or
+                       prop_verified == "1"):
+                    continue  # Skip unverified properties
+            
             # Apply status filter client-side
             prop_status = enhanced_prop.get('status', '').lower().strip()
             
@@ -650,18 +691,18 @@ async def get_properties(
             if prop_status in ['sold', 'rented', 'withdrawn', 'inactive']:
                 continue
             
-            # If status filter was explicitly set to "active", only show active properties
-            # Otherwise, show both active and pending (pending = awaiting admin approval)
+            # CRITICAL: Only show active properties by default (approved properties)
+            # If status filter was explicitly set, respect it
             if status and status.lower() == 'active':
                 if prop_status not in ['active']:
                     continue
-            # If no status filter or status='all', show active, pending, and pending_unassigned
-            elif not status or status.lower() in ['all', '*', '']:
-                if prop_status not in ['active', 'pending', 'pending_unassigned']:
-                    continue
-            # If specific status requested, only show that status
             elif status and status.lower() not in ['all', '*', '']:
+                # If specific status requested, only show that status
                 if prop_status != status.lower():
+                    continue
+            else:
+                # Default: Only show active properties (approved and active)
+                if prop_status not in ['active']:
                     continue
 
             # Property passed all filters
@@ -1015,7 +1056,7 @@ async def create_property(request: Request):
                         property_data[field] = None
                 else:
                     try:
-                        integer_fields = ['bedrooms', 'bathrooms', 'balconies', 'total_floors', 'floor', 'parking_spaces', 'floor_count', 'borewells_number', 'total_units', 'units_per_floor', 'total_towers', 'car_parking_slots', 'number_of_floors', 'age']
+                        integer_fields = ['bedrooms', 'bathrooms', 'balconies', 'total_floors', 'floor', 'parking_spaces', 'floor_count', 'borewells_number', 'total_units', 'units_per_floor', 'total_towers', 'car_parking_slots', 'number_of_floors']
                         if field in integer_fields:
                             property_data[field] = int(float(value)) if value else None
                         else:
@@ -1513,7 +1554,7 @@ async def create_property(request: Request):
                                    'apartment_type', 'community_type', 'legal_status', 'rera_status',
                                    'rera_number', 'commercial_subtype', 'land_type', 'soil_type',
                                    'water_source', 'plot_type', 'venture_name', 'developer_name',
-                                   'suitable_for', 'shell_type', 'construction_status', 'view',
+                                   'suitable_for', 'shell_type', 'construction_status', 'age', 'view',
                                    'project_name', 'builder_name', 'tower_block', 'flat_number',
                                    'building_name', 'ownership_type', 'category', 'video_url',
                                    'virtual_tour_url', 'pricing_display_mode', 'pricing_unit_type',
@@ -1747,10 +1788,28 @@ async def get_property(property_id_or_slug: str, request: Request = None):
             properties = await db.select("properties", filters={"id": property_id_or_slug})
             if properties:
                 property_data = dict(properties[0])
+                # CRITICAL: Only show verified and active properties to public
+                # Check if property is verified and active
+                prop_verified = property_data.get('verified', False)
+                prop_status = property_data.get('status', '').lower()
+                
+                # Handle different boolean representations
+                is_verified = (prop_verified is True or 
+                              prop_verified == "true" or 
+                              str(prop_verified).lower() == 'true' or
+                              prop_verified == 1 or
+                              prop_verified == "1")
+                
+                # Only allow verified and active properties
+                if not is_verified or prop_status != 'active':
+                    raise HTTPException(status_code=404, detail="Property not found")
+                
                 return await _process_single_property(property_data, show_agent_info=show_agent_info)
         except ValueError:
             # It's not a UUID, so treat it as a slug
             pass
+        except HTTPException:
+            raise
 
         # If not found by ID, search by slug using database query
         import re
@@ -1758,15 +1817,27 @@ async def get_property(property_id_or_slug: str, request: Request = None):
         # Try to find by searching titles that might match the slug
         # First, try a direct search with the slug as a substring in title
         # This is much more efficient than fetching all properties
+        # CRITICAL: Only search verified and active properties
         search_term = property_id_or_slug.replace('-', ' ')
         properties_by_title = await db.select(
             "properties",
-            filters={"status": "active"},
-            limit=100  # Limit search to first 100 active properties
+            filters={"status": "active", "verified": True},
+            limit=100  # Limit search to first 100 active verified properties
         )
         
         # Search through limited results for slug match
         for prop in properties_by_title:
+            # Double-check verified status (safety check)
+            prop_verified = prop.get('verified', False)
+            is_verified = (prop_verified is True or 
+                          prop_verified == "true" or 
+                          str(prop_verified).lower() == 'true' or
+                          prop_verified == 1 or
+                          prop_verified == "1")
+            
+            if not is_verified:
+                continue  # Skip unverified properties
+            
             title = prop.get('title', '')
             if title:
                 # Generate slug from title

@@ -109,6 +109,12 @@ class Property(Base):
     private_garden: Mapped[bool] = mapped_column(Boolean, default=False)
     private_driveway: Mapped[bool] = mapped_column(Boolean, default=False)
     plot_dimensions: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    construction_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    age: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    terrace: Mapped[bool] = mapped_column(Boolean, default=False)
+    servant_room: Mapped[bool] = mapped_column(Boolean, default=False)
+    pooja_room: Mapped[bool] = mapped_column(Boolean, default=False)
+    study_room: Mapped[bool] = mapped_column(Boolean, default=False)
     
     # Land/farm specific fields
     land_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
