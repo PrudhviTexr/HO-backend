@@ -42,6 +42,11 @@ local_defaults = [
 # Start with localhost defaults (always include these)
 cors_origins.extend(local_defaults)
 
+# Always allow production domains (www and non-www) so Render/deployed app never blocks them
+for _origin in ["https://homeandown.com", "https://www.homeandown.com"]:
+    if _origin not in cors_origins:
+        cors_origins.append(_origin)
+
 # Add production origins from environment variable
 try:
     cors_raw = getattr(settings, 'CORS_ORIGIN', '') or ''
