@@ -44,7 +44,7 @@ class Settings:
     
     # Site Configuration
     SITE_URL: str = os.getenv("SITE_URL", "https://homeandown.com")
-    CORS_ORIGIN: str = os.getenv("CORS_ORIGIN", "https://homeandown.com")
+    CORS_ORIGIN: str = os.getenv("CORS_ORIGIN", "https://homeandown.com,https://www.homeandown.com")
     PYTHON_API_KEY: str = os.getenv("PYTHON_API_KEY", "")
     
     # Twilio Configuration for OTP

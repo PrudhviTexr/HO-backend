@@ -64,9 +64,28 @@ if settings.SITE_URL and settings.SITE_URL not in cors_origins:
     cors_origins.append(settings.SITE_URL)
     print(f"[CORS] Added SITE_URL to allowed origins: {settings.SITE_URL}")
 
+# Final guarantee: production origins must be in the list (Render/deploy may run old env or code paths)
+PRODUCTION_ORIGINS = ["https://homeandown.com", "https://www.homeandown.com"]
+for _o in PRODUCTION_ORIGINS:
+    if _o not in cors_origins:
+        cors_origins.append(_o)
 print(f"[CORS] Final allowed origins: {cors_origins}")
 
-# Add CORS middleware - MUST be first middleware to ensure it handles all responses
+# Store so exception handler and any other code use the same list
+app._cors_origins = list(cors_origins)
+
+# #region agent log
+try:
+    import json as _json
+    from pathlib import Path as _Path
+    _log_path = _Path(__file__).resolve().parent.parent.parent / "debug-d0fb09.log"
+    _entry = {"sessionId": "d0fb09", "hypothesisId": "A", "location": "main.py:CORS", "message": "CORS startup", "data": {"allowed_origins": cors_origins, "has_www": "https://www.homeandown.com" in cors_origins}, "timestamp": int(__import__("time").time() * 1000)}
+    with open(_log_path, "a", encoding="utf-8") as _f:
+        _f.write(_json.dumps(_entry) + "\n")
+except Exception:
+    pass
+# #endregion
+
 # Add CORS middleware - MUST be first middleware to ensure it handles all responses
 app.add_middleware(
     CORSMiddleware,
@@ -243,15 +262,12 @@ async def global_exception_handler(request: Request, exc: Exception):
     # Ensure CORS headers are present even on errors
     origin = request.headers.get("origin")
     if origin:
-        # Get CORS origins from the middleware configuration
         cors_origins = getattr(app, '_cors_origins', [])
         if not cors_origins:
-            # Fallback to localhost origins
             cors_origins = [
-                "http://localhost:8082",
-                "http://127.0.0.1:8082",
-                "http://localhost:8080",
-                "http://127.0.0.1:8080"
+                "http://localhost:8082", "http://127.0.0.1:8082",
+                "http://localhost:8080", "http://127.0.0.1:8080",
+                "https://homeandown.com", "https://www.homeandown.com",
             ]
         if origin in cors_origins:
             response.headers["Access-Control-Allow-Origin"] = origin
