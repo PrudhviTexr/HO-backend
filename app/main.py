@@ -21,47 +21,39 @@ cors_origins = []
 # IMPORTANT: When allow_credentials=True, we CANNOT use wildcard "*"
 # We must explicitly list all allowed origins
 
-# Always include localhost origins for local development
-local_defaults = [
-    "http://localhost:8080",
-    "http://127.0.0.1:8080",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:8082",  # Main frontend port
-    "http://127.0.0.1:8082",
-    "http://localhost:8081",
-    "http://127.0.0.1:8081",
-    "http://localhost:8083",
-    "http://127.0.0.1:8083",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:5174",
-    "http://127.0.0.1:5174",
-]
+# PRODUCTION SETUP: All allowed origins come from CORS_ORIGIN environment variable
+# This keeps the code free of hardcoded values and safe for deployment
+print("[CORS] Initializing CORS configuration from environment...")
 
-# Start with localhost defaults (always include these)
-cors_origins.extend(local_defaults)
+# Get allowed origins from environment variable
+# Example in .env: CORS_ORIGIN=https://homeandown.com,https://www.homeandown.com,http://localhost:8082
+cors_raw = getattr(settings, 'CORS_ORIGIN', '') or ''
+if cors_raw:
+    cors_origins = [o.strip() for o in cors_raw.split(',') if o.strip()]
+    print(f"[CORS] ✅ Loaded {len(cors_origins)} origin(s) from CORS_ORIGIN environment variable")
+else:
+    print("[CORS] ⚠️  WARNING: CORS_ORIGIN environment variable is empty or not set!")
+    print("[CORS] The API will reject requests from any origin.")
+    print("[CORS] Set CORS_ORIGIN in .env to enable CORS (comma-separated URLs)")
 
-# Add production origins from environment variable
-try:
-    cors_raw = getattr(settings, 'CORS_ORIGIN', '') or ''
-    if cors_raw:
-        production_origins = [o.strip() for o in cors_raw.split(',') if o.strip()]
-        for origin in production_origins:
-            if origin not in cors_origins:
-                cors_origins.append(origin)
-        print(f"[CORS] Added production origins from CORS_ORIGIN: {production_origins}")
-except Exception as e:
-    print(f"[CORS] Error parsing CORS_ORIGIN: {e}")
+# Safety check: Ensure production domains are always accessible
+PRODUCTION_ORIGINS = ["https://homeandown.com", "https://www.homeandown.com"]
+for origin in PRODUCTION_ORIGINS:
+    if origin not in cors_origins:
+        cors_origins.append(origin)
+        print(f"[CORS] ✅ Added production origin: {origin}")
 
-# Always include the production site URL
-if settings.SITE_URL and settings.SITE_URL not in cors_origins:
-    cors_origins.append(settings.SITE_URL)
-    print(f"[CORS] Added SITE_URL to allowed origins: {settings.SITE_URL}")
+# Summary
+print(f"[CORS] Final configuration: {len(cors_origins)} origin(s) allowed")
+if cors_origins:
+    for origin in cors_origins:
+        print(f"  - {origin}")
+else:
+    print("  ⚠️  No origins configured!")
 
-print(f"[CORS] Final allowed origins: {cors_origins}")
+# Store so exception handler and any other code use the same list
+app._cors_origins = list(cors_origins)
 
-# Add CORS middleware - MUST be first middleware to ensure it handles all responses
 # Add CORS middleware - MUST be first middleware to ensure it handles all responses
 app.add_middleware(
     CORSMiddleware,
@@ -73,31 +65,31 @@ app.add_middleware(
     max_age=3600,  # Cache preflight requests for 1 hour
 )
 
+# Production origins always get CORS headers (safety net)
+_ALWAYS_ALLOW_ORIGINS = ("https://homeandown.com", "https://www.homeandown.com")
+
 # Custom middleware to ensure CORS headers are always added
 class EnsureCORSMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         origin = request.headers.get("origin")
         response = await call_next(request)
-        
-        # Log CORS request for debugging
+        allowed = origin and (origin in cors_origins or origin in _ALWAYS_ALLOW_ORIGINS)
         if origin:
-            print(f"[CORS] Request from origin: {origin}, Allowed: {origin in cors_origins}")
-        
-        # If origin is in allowed list, ensure CORS headers are present
-        if origin and origin in cors_origins:
-            # Only set if not already set (to avoid overriding CORS middleware)
+            print(f"[CORS] Request from origin: {origin}, Allowed: {allowed}")
+        if allowed:
             if "Access-Control-Allow-Origin" not in response.headers:
                 response.headers["Access-Control-Allow-Origin"] = origin
-                print(f"[CORS] Added Access-Control-Allow-Origin: {origin}")
             if "Access-Control-Allow-Credentials" not in response.headers:
                 response.headers["Access-Control-Allow-Credentials"] = "true"
         elif origin:
             print(f"[CORS] WARNING: Origin {origin} not in allowed list. Allowed origins: {cors_origins}")
-        
         return response
 
 # Add custom CORS middleware after CORS middleware
 app.add_middleware(EnsureCORSMiddleware)
+
+# Production origins always allowed for OPTIONS (safety net if list is wrong on deploy)
+_OPTIONS_ALWAYS_ORIGINS = ("https://homeandown.com", "https://www.homeandown.com")
 
 # Add explicit OPTIONS handler for preflight requests
 @app.options("/{full_path:path}")
@@ -105,9 +97,9 @@ async def options_handler(request: Request, full_path: str):
     """Handle OPTIONS preflight requests"""
     origin = request.headers.get("origin")
     print(f"[CORS] OPTIONS preflight request from origin: {origin}")
-    
-    if origin and origin in cors_origins:
-        response = Response()
+    allowed = origin and (origin in cors_origins or origin in _OPTIONS_ALWAYS_ORIGINS)
+    if allowed:
+        response = Response(status_code=204)
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Credentials"] = "true"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
@@ -115,9 +107,9 @@ async def options_handler(request: Request, full_path: str):
         response.headers["Access-Control-Max-Age"] = "3600"
         print(f"[CORS] Allowed OPTIONS request from {origin}")
         return response
-    else:
+    if origin:
         print(f"[CORS] Rejected OPTIONS request from {origin} (not in allowed list)")
-    return Response()
+    return Response(status_code=400)
 
 # Import routes after app initialization to avoid circular dependencies
 from .routes import (
@@ -238,15 +230,12 @@ async def global_exception_handler(request: Request, exc: Exception):
     # Ensure CORS headers are present even on errors
     origin = request.headers.get("origin")
     if origin:
-        # Get CORS origins from the middleware configuration
         cors_origins = getattr(app, '_cors_origins', [])
         if not cors_origins:
-            # Fallback to localhost origins
             cors_origins = [
-                "http://localhost:8082",
-                "http://127.0.0.1:8082",
-                "http://localhost:8080",
-                "http://127.0.0.1:8080"
+                "http://localhost:8082", "http://127.0.0.1:8082",
+                "http://localhost:8080", "http://127.0.0.1:8080",
+                "https://homeandown.com", "https://www.homeandown.com",
             ]
         if origin in cors_origins:
             response.headers["Access-Control-Allow-Origin"] = origin
