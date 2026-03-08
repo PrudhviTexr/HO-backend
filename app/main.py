@@ -1,3 +1,5 @@
+import os
+import re
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
@@ -26,7 +28,7 @@ cors_origins = []
 print("[CORS] Initializing CORS configuration from environment...")
 
 # Get allowed origins from environment variable
-# Example in .env: CORS_ORIGIN=https://homeandown.com,https://www.homeandown.com,http://localhost:8082
+# Example in .env: CORS_ORIGIN=https://homeandown.com,https://www.homeandown.com
 cors_raw = getattr(settings, 'CORS_ORIGIN', '') or ''
 if cors_raw:
     cors_origins = [o.strip() for o in cors_raw.split(',') if o.strip()]
@@ -35,6 +37,15 @@ else:
     print("[CORS] ⚠️  WARNING: CORS_ORIGIN environment variable is empty or not set!")
     print("[CORS] The API will reject requests from any origin.")
     print("[CORS] Set CORS_ORIGIN in .env to enable CORS (comma-separated URLs)")
+
+# Mobile/WebView origins (Capacitor, Ionic, null) so the mobile app can open and call the API
+mobile_raw = getattr(settings, 'CORS_ORIGIN_MOBILE', '') or ''
+if mobile_raw:
+    for o in mobile_raw.split(','):
+        o = o.strip()
+        if o and o not in cors_origins:
+            cors_origins.append(o)
+    print(f"[CORS] ✅ Mobile/WebView origins included (CORS_ORIGIN_MOBILE)")
 
 # Safety check: Ensure production domains are always accessible
 PRODUCTION_ORIGINS = ["https://homeandown.com", "https://www.homeandown.com"]
@@ -51,13 +62,22 @@ if cors_origins:
 else:
     print("  ⚠️  No origins configured!")
 
+# Regex for mobile/WebView origins (Capacitor, Ionic)
+# Ensures the new mobile app can open and call the API even with variant origins
+_CORS_ORIGIN_REGEX = (
+    r"^capacitor://.*"
+    r"|^ionic://.*"
+)
+
 # Store so exception handler and any other code use the same list
 app._cors_origins = list(cors_origins)
+app._cors_origin_regex = _CORS_ORIGIN_REGEX
 
 # Add CORS middleware - MUST be first middleware to ensure it handles all responses
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,  # Explicit list (required when allow_credentials=True)
+    allow_origin_regex=_CORS_ORIGIN_REGEX,  # Mobile/WebView: capacitor://*, ionic://*
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
@@ -68,12 +88,22 @@ app.add_middleware(
 # Production origins always get CORS headers (safety net)
 _ALWAYS_ALLOW_ORIGINS = ("https://homeandown.com", "https://www.homeandown.com")
 
+def _origin_allowed(origin: str | None) -> bool:
+    if not origin:
+        return False
+    if origin in cors_origins or origin in _ALWAYS_ALLOW_ORIGINS:
+        return True
+    try:
+        return bool(re.match(_CORS_ORIGIN_REGEX, origin))
+    except Exception:
+        return False
+
 # Custom middleware to ensure CORS headers are always added
 class EnsureCORSMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         origin = request.headers.get("origin")
         response = await call_next(request)
-        allowed = origin and (origin in cors_origins or origin in _ALWAYS_ALLOW_ORIGINS)
+        allowed = _origin_allowed(origin)
         if origin:
             print(f"[CORS] Request from origin: {origin}, Allowed: {allowed}")
         if allowed:
@@ -97,7 +127,7 @@ async def options_handler(request: Request, full_path: str):
     """Handle OPTIONS preflight requests"""
     origin = request.headers.get("origin")
     print(f"[CORS] OPTIONS preflight request from origin: {origin}")
-    allowed = origin and (origin in cors_origins or origin in _OPTIONS_ALWAYS_ORIGINS)
+    allowed = _origin_allowed(origin)
     if allowed:
         response = Response(status_code=204)
         response.headers["Access-Control-Allow-Origin"] = origin
@@ -227,21 +257,13 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"detail": f"Internal server error: {str(exc)}"}
     )
     
-    # Ensure CORS headers are present even on errors
+    # Ensure CORS headers are present even on errors (including mobile/WebView origins)
     origin = request.headers.get("origin")
-    if origin:
-        cors_origins = getattr(app, '_cors_origins', [])
-        if not cors_origins:
-            cors_origins = [
-                "http://localhost:8082", "http://127.0.0.1:8082",
-                "http://localhost:8080", "http://127.0.0.1:8080",
-                "https://homeandown.com", "https://www.homeandown.com",
-            ]
-        if origin in cors_origins:
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-            response.headers["Access-Control-Allow-Headers"] = "*"
+    if origin and _origin_allowed(origin):
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        response.headers["Access-Control-Allow-Headers"] = "*"
     
     return response
 
