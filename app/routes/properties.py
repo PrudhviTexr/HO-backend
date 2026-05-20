@@ -158,6 +158,33 @@ def _format_property_pricing(property_data: dict) -> dict:
         'value': None
     }
 
+def _is_featured_property(prop: dict) -> bool:
+    val = prop.get('featured')
+    if val is True or val == 1 or val == "1":
+        return True
+    if val is False or val == 0 or val == "0" or val is None:
+        return False
+    return str(val).lower() == 'true'
+
+def _property_created_timestamp(prop: dict) -> float:
+    created = prop.get('created_at')
+    if not created:
+        return 0.0
+    try:
+        if isinstance(created, dt.datetime):
+            return created.timestamp()
+        text = str(created).replace('Z', '+00:00')
+        return dt.datetime.fromisoformat(text).timestamp()
+    except (ValueError, TypeError):
+        return 0.0
+
+def _sort_properties_for_display(properties: list) -> list:
+    """Featured first, then newest created_at first."""
+    return sorted(
+        properties,
+        key=lambda p: (0 if _is_featured_property(p) else 1, -_property_created_timestamp(p)),
+    )
+
 # DEBUG ENDPOINTS - Disabled for production
 # Uncomment for local debugging only
 # 
@@ -360,7 +387,7 @@ async def get_properties(
                     else:
                         filtered_properties = []
                 
-                return filtered_properties
+                return _sort_properties_for_display(filtered_properties)
             else:
                 # Try a simple count query to verify database connection
                 try:
@@ -803,7 +830,7 @@ async def get_properties(
         
         total_elapsed = (time.time() - start_time) * 1000
         
-        return filtered_properties
+        return _sort_properties_for_display(filtered_properties)
 
     except Exception as e:
         error_msg = str(e)
