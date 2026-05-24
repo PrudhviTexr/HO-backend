@@ -166,23 +166,40 @@ def _is_featured_property(prop: dict) -> bool:
         return False
     return str(val).lower() == 'true'
 
-def _property_created_timestamp(prop: dict) -> float:
-    created = prop.get('created_at')
-    if not created:
+def _parse_property_timestamp(value: Any) -> float:
+    if value is None or value == '':
         return 0.0
     try:
-        if isinstance(created, dt.datetime):
-            return created.timestamp()
-        text = str(created).replace('Z', '+00:00')
+        if isinstance(value, dt.datetime):
+            return value.timestamp()
+        text = str(value).replace('Z', '+00:00')
         return dt.datetime.fromisoformat(text).timestamp()
     except (ValueError, TypeError):
         return 0.0
 
+def _property_sort_timestamp(prop: dict) -> float:
+    for key in ('created_at', 'createdAt', 'updated_at', 'updatedAt'):
+        ts = _parse_property_timestamp(prop.get(key))
+        if ts > 0:
+            return ts
+    prop_id = prop.get('id')
+    if prop_id is not None:
+        try:
+            id_num = float(str(prop_id))
+            if id_num > 0:
+                return id_num
+        except (ValueError, TypeError):
+            pass
+    return 0.0
+
+def _property_id_sort_key(prop: dict) -> str:
+    return str(prop.get('id') or '')
+
 def _sort_properties_for_display(properties: list) -> list:
-    """Featured first, then newest created_at first."""
+    """Newest listing first (by created/updated date, not alphabetical)."""
     return sorted(
         properties,
-        key=lambda p: (0 if _is_featured_property(p) else 1, -_property_created_timestamp(p)),
+        key=lambda p: (-_property_sort_timestamp(p), _property_id_sort_key(p)),
     )
 
 # DEBUG ENDPOINTS - Disabled for production
