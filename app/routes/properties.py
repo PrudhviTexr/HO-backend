@@ -379,6 +379,70 @@ async def get_properties(
                     filtered_properties = [p for p in filtered_properties if p.get('property_type') == property_type]
                 if listing_type:
                     filtered_properties = [p for p in filtered_properties if p.get('listing_type') == listing_type]
+                if city:
+                    city_filter = city.lower().strip()
+                    filtered_properties = [
+                        p for p in filtered_properties
+                        if city_filter == str(p.get('city', '')).lower().strip()
+                    ]
+                if state:
+                    state_filter = state.lower().strip()
+                    filtered_properties = [
+                        p for p in filtered_properties
+                        if state_filter == str(p.get('state', '')).lower().strip()
+                    ]
+                if bedrooms is not None:
+                    filtered_properties = [
+                        p for p in filtered_properties
+                        if p.get('bedrooms') is not None and p.get('bedrooms') >= bedrooms
+                    ]
+                if bathrooms is not None:
+                    filtered_properties = [
+                        p for p in filtered_properties
+                        if p.get('bathrooms') is not None and p.get('bathrooms') >= bathrooms
+                    ]
+                if furnishing_status:
+                    furnishing_filter = furnishing_status.lower().strip()
+                    filtered_properties = [
+                        p for p in filtered_properties
+                        if str(p.get('furnishing_status', '')).lower().strip() == furnishing_filter
+                    ]
+                if facing:
+                    facing_filter = facing.lower().strip()
+                    filtered_properties = [
+                        p for p in filtered_properties
+                        if str(p.get('facing', '')).lower().strip() == facing_filter
+                    ]
+                if min_price is not None:
+                    filtered_properties = [
+                        p for p in filtered_properties
+                        if p.get('price') is not None and p.get('price') >= min_price
+                    ]
+                if max_price is not None:
+                    filtered_properties = [
+                        p for p in filtered_properties
+                        if p.get('price') is not None and p.get('price') <= max_price
+                    ]
+                if min_rent is not None:
+                    filtered_properties = [
+                        p for p in filtered_properties
+                        if p.get('monthly_rent') is not None and p.get('monthly_rent') >= min_rent
+                    ]
+                if max_rent is not None:
+                    filtered_properties = [
+                        p for p in filtered_properties
+                        if p.get('monthly_rent') is not None and p.get('monthly_rent') <= max_rent
+                    ]
+                if min_area is not None:
+                    filtered_properties = [
+                        p for p in filtered_properties
+                        if p.get('area_sqft') is not None and p.get('area_sqft') >= min_area
+                    ]
+                if max_area is not None:
+                    filtered_properties = [
+                        p for p in filtered_properties
+                        if p.get('area_sqft') is not None and p.get('area_sqft') <= max_area
+                    ]
                 
                 # Filter by title/name search (case-insensitive partial match)
                 if search_title:
@@ -392,17 +456,6 @@ async def get_properties(
                 # Format properties
                 for prop in filtered_properties:
                     prop['formatted_pricing'] = _format_property_pricing(prop)
-                
-                # If filters resulted in empty array, but we have properties in DB
-                # IMPORTANT: Only return unfiltered if featured filter was NOT requested
-                # This prevents showing non-featured properties when user specifically requested featured
-                if len(filtered_properties) == 0 and len(all_properties_direct) > 0:
-                    
-                    # Only return unfiltered if featured filter was NOT explicitly requested
-                    if featured is None or featured == "":
-                        filtered_properties = all_properties_direct[:limit or 50]
-                    else:
-                        filtered_properties = []
                 
                 return _sort_properties_for_display(filtered_properties)
             else:
@@ -578,8 +631,9 @@ async def get_properties(
                 if all_properties_check and len(all_properties_check) > 0:
                     for i, prop in enumerate(all_properties_check[:3]):  # Show first 3
                         pass  # Debug: log first 3 properties if needed
-                    # Return the unfiltered properties for local development
-                    return all_properties_check[:limit] if limit else all_properties_check
+                    # Do not return unfiltered properties when current query has no matches.
+                    # This preserves filter correctness and prevents unapproved leakage.
+                    return []
                 else:
                     pass
             except Exception as check_error:
