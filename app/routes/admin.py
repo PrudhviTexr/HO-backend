@@ -665,7 +665,7 @@ async def delete_user(user_id: str, request: Request, _=Depends(require_admin_or
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/properties")
-async def list_properties(request: Request, _=Depends(require_admin_or_api_key), limit: int = 100, offset: int = 0):
+async def list_properties(request: Request, _=Depends(require_admin_or_api_key), limit: int = 2000, offset: int = 0):
     """List properties - optimized with timeout, pagination, and parallel queries"""
     try:
         import asyncio
@@ -678,7 +678,7 @@ async def list_properties(request: Request, _=Depends(require_admin_or_api_key),
         try:
             properties, users = await asyncio.wait_for(
                 asyncio.gather(
-                    db.admin_select("properties", limit=min(limit, 200), offset=offset, order_by="created_at", ascending=False),
+                    db.admin_select("properties", limit=min(limit, 5000), offset=offset, order_by="created_at", ascending=False),
                     db.admin_select("users", limit=1000, order_by="created_at", ascending=False),  # Limit users to prevent huge fetch
                     return_exceptions=True
                 ),

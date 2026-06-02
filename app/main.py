@@ -145,7 +145,7 @@ async def options_handler(request: Request, full_path: str):
 from .routes import (
     auth, properties, users, uploads, records, maintenance,
     seller, buyer, emails, agent, locations, analytics, admin,
-    push_notifications, advanced_analytics, role_based
+    push_notifications, advanced_analytics, role_based, property_management
 )
 from .routes import auth_otp, agent_assignments
 
@@ -233,6 +233,12 @@ app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(uploads.router, prefix="/api/uploads", tags=["uploads"])
 app.include_router(records.router, prefix="/api/records", tags=["records"])
+app.include_router(
+    property_management.router, prefix="/api/records", tags=["property-management"]
+)
+app.include_router(
+    property_management.router, prefix="/api/admin", tags=["property-management-admin"]
+)
 app.include_router(maintenance.router, prefix="/api/maintenance", tags=["maintenance"])
 app.include_router(seller.router, prefix="/api/seller", tags=["seller"])
 app.include_router(buyer.router, prefix="/api/buyer", tags=["buyer"])

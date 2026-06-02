@@ -195,8 +195,48 @@ def _property_sort_timestamp(prop: dict) -> float:
 def _property_id_sort_key(prop: dict) -> str:
     return str(prop.get('id') or '')
 
-def _sort_properties_for_display(properties: list) -> list:
-    """Newest listing first (by created/updated date, not alphabetical)."""
+def _listing_type_matches(prop: dict, listing_type: Optional[str]) -> bool:
+    if not listing_type:
+        return True
+    return str(prop.get("listing_type", "")).upper().strip() == str(listing_type).upper().strip()
+
+
+def _public_listing_visible(prop: dict) -> bool:
+    """Buyer-facing listings: active status (admin-approved) or explicitly verified."""
+    status = str(prop.get("status", "")).lower().strip()
+    if status in ("sold", "rented", "withdrawn", "inactive", "rejected"):
+        return False
+    if status == "active":
+        return True
+    val = prop.get("verified")
+    if val is True or val == 1 or val == "1":
+        return True
+    if str(val).lower() == "true":
+        return True
+    return False
+
+
+def _featured_order_value(prop: dict) -> int:
+    raw = prop.get("featured_order")
+    if raw is None or raw == "":
+        return 999999
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 999999
+
+
+def _sort_featured_properties(properties: list) -> list:
+    """Featured home page: admin display order (lower number first)."""
+    return sorted(
+        properties,
+        key=lambda p: (_featured_order_value(p), -_property_sort_timestamp(p), _property_id_sort_key(p)),
+    )
+
+
+def _sort_properties_for_display(properties: list, *, featured_mode: bool = False) -> list:
+    if featured_mode:
+        return _sort_featured_properties(properties)
     return sorted(
         properties,
         key=lambda p: (-_property_sort_timestamp(p), _property_id_sort_key(p)),
@@ -234,6 +274,7 @@ async def get_properties(
     request: Request,
     city: Optional[str] = Query(None),
     state: Optional[str] = Query(None),
+    district: Optional[str] = Query(None),
     mandal: Optional[str] = Query(None),
     property_type: Optional[str] = Query(None),
     listing_type: Optional[str] = Query(None),
@@ -275,8 +316,15 @@ async def get_properties(
         try:
             import asyncio
             try:
+                fetch_limit = min(int(limit or 50), 1000)
                 all_properties_direct = await asyncio.wait_for(
-                    db.select("properties", limit=limit or 50, filters=None, order_by="created_at", ascending=False),
+                    db.select(
+                        "properties",
+                        limit=fetch_limit,
+                        filters=None,
+                        order_by="created_at",
+                        ascending=False,
+                    ),
                     timeout=15.0
                 )
             except Exception as db_conn_error:
@@ -342,16 +390,11 @@ async def get_properties(
                     else:
                         pass  # No properties found
                 
-                # CRITICAL: Filter out unverified properties (require admin approval)
-                # Only skip this check if explicitly requested via include_unverified=True
+                # Public listings: active (approved) or verified; skip when include_unverified
                 if not include_unverified:
-                    before_verified_filter = len(filtered_properties)
-                    filtered_properties = [p for p in filtered_properties 
-                                         if (p.get('verified') is True or 
-                                            p.get('verified') == "true" or 
-                                            str(p.get('verified', '')).lower() == 'true' or
-                                            p.get('verified') == 1 or
-                                            p.get('verified') == "1")]
+                    filtered_properties = [
+                        p for p in filtered_properties if _public_listing_visible(p)
+                    ]
                 
                 # Apply status filter client-side
                 prop_statuses = {}
@@ -376,20 +419,48 @@ async def get_properties(
                                          if p.get('status', '').lower() == 'active']
                 
                 if property_type:
-                    filtered_properties = [p for p in filtered_properties if p.get('property_type') == property_type]
+                    pt_filter = property_type.lower().strip()
+                    if pt_filter == 'apartment':
+                        apartment_types = {
+                            'apartment', 'standalone_apartment', 'gated_apartment'
+                        }
+                        filtered_properties = [
+                            p for p in filtered_properties
+                            if str(p.get('property_type', '')).lower().strip() in apartment_types
+                        ]
+                    else:
+                        filtered_properties = [
+                            p for p in filtered_properties
+                            if str(p.get('property_type', '')).lower().strip() == pt_filter
+                        ]
                 if listing_type:
-                    filtered_properties = [p for p in filtered_properties if p.get('listing_type') == listing_type]
+                    filtered_properties = [
+                        p for p in filtered_properties
+                        if _listing_type_matches(p, listing_type)
+                    ]
                 if city:
                     city_filter = city.lower().strip()
                     filtered_properties = [
                         p for p in filtered_properties
                         if city_filter == str(p.get('city', '')).lower().strip()
+                        or city_filter in str(p.get('city', '')).lower().strip()
+                        or str(p.get('city', '')).lower().strip() in city_filter
                     ]
                 if state:
                     state_filter = state.lower().strip()
                     filtered_properties = [
                         p for p in filtered_properties
                         if state_filter == str(p.get('state', '')).lower().strip()
+                        or state_filter in str(p.get('state', '')).lower().strip()
+                        or str(p.get('state', '')).lower().strip() in state_filter
+                    ]
+                if district:
+                    district_filter = district.lower().strip()
+                    filtered_properties = [
+                        p for p in filtered_properties
+                        if district_filter == str(p.get('district', '')).lower().strip()
+                        or district_filter in str(p.get('district', '')).lower().strip()
+                        or str(p.get('district', '')).lower().strip() in district_filter
                     ]
                 if bedrooms is not None:
                     filtered_properties = [
@@ -457,7 +528,10 @@ async def get_properties(
                 for prop in filtered_properties:
                     prop['formatted_pricing'] = _format_property_pricing(prop)
                 
-                return _sort_properties_for_display(filtered_properties)
+                featured_mode = featured is True or str(featured).lower() == "true"
+                return _sort_properties_for_display(
+                    filtered_properties, featured_mode=featured_mode
+                )
             else:
                 # Try a simple count query to verify database connection
                 try:
@@ -770,17 +844,11 @@ async def get_properties(
                     if furnishing_filter not in prop_furnishing and prop_furnishing not in furnishing_filter:
                         continue
 
-            # CRITICAL: Filter out unverified properties (require admin approval)
-            # Only skip this check if explicitly requested via include_unverified=True
-            if not include_unverified:
-                prop_verified = enhanced_prop.get('verified', False)
-                # Handle different boolean representations (True, "true", 1, etc.)
-                if not (prop_verified is True or 
-                       prop_verified == "true" or 
-                       str(prop_verified).lower() == 'true' or
-                       prop_verified == 1 or
-                       prop_verified == "1"):
-                    continue  # Skip unverified properties
+            if listing_type and not _listing_type_matches(enhanced_prop, listing_type):
+                continue
+
+            if not include_unverified and not _public_listing_visible(enhanced_prop):
+                continue
             
             # Apply status filter client-side
             prop_status = enhanced_prop.get('status', '').lower().strip()
@@ -901,7 +969,8 @@ async def get_properties(
         
         total_elapsed = (time.time() - start_time) * 1000
         
-        return _sort_properties_for_display(filtered_properties)
+        featured_mode = featured is True or str(featured).lower() == "true"
+        return _sort_properties_for_display(filtered_properties, featured_mode=featured_mode)
 
     except Exception as e:
         error_msg = str(e)
@@ -1097,6 +1166,9 @@ async def create_property(request: Request):
             'listing_type': 'SALE',
             'property_type': 'independent_house'
         }
+
+        if property_data.get('listing_type'):
+            property_data['listing_type'] = str(property_data['listing_type']).upper().strip()
         
         # Only require area_sqft for property types that need it
         # CRITICAL: Database requires area_sqft to be NOT NULL, so set to 0 for property types that don't require area input
@@ -2595,19 +2667,24 @@ async def toggle_featured_property(property_id: str, data: dict, _=Depends(requi
         if not existing_properties:
             raise HTTPException(status_code=404, detail="Property not found")
         
-        # Get the featured value from request
         featured = data.get('featured', False)
-        
-        # Update property featured status
-        await db.update("properties", {
+        update_payload = {
             "featured": featured,
-            "updated_at": dt.datetime.now(dt.timezone.utc).isoformat()
-        }, {"id": property_id})
-        
+            "updated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        }
+        if "featured_order" in data:
+            fo = data.get("featured_order")
+            update_payload["featured_order"] = int(fo) if fo not in (None, "") else None
+        elif not featured:
+            update_payload["featured_order"] = None
+
+        await db.update("properties", update_payload, {"id": property_id})
+
         return {
             "success": True,
             "message": f"Property {'featured' if featured else 'unfeatured'} successfully",
-            "featured": featured
+            "featured": featured,
+            "featured_order": update_payload.get("featured_order"),
         }
         
     except HTTPException:
@@ -3083,6 +3160,18 @@ async def get_filter_options():
         property_types = sorted(list(set([p.get('property_type') for p in properties if p.get('property_type')])))
         states = sorted(list(set([p.get('state') for p in properties if p.get('state')])))
         cities = sorted(list(set([p.get('city') for p in properties if p.get('city')])))
+        cities_by_state: dict = {}
+        for p in properties:
+            st = (p.get('state') or '').strip()
+            ct = (p.get('city') or '').strip()
+            if not st or not ct:
+                continue
+            if st not in cities_by_state:
+                cities_by_state[st] = set()
+            cities_by_state[st].add(ct)
+        cities_by_state_sorted = {
+            k: sorted(list(v)) for k, v in sorted(cities_by_state.items())
+        }
         furnishing_statuses = sorted(list(set([p.get('furnishing_status') for p in properties if p.get('furnishing_status')])))
         facing_directions = sorted(list(set([p.get('facing') for p in properties if p.get('facing')])))
         commercial_subtypes = sorted(list(set([p.get('commercial_subtype') for p in properties if p.get('commercial_subtype')])))
@@ -3092,6 +3181,7 @@ async def get_filter_options():
             "property_types": [{"value": pt, "label": pt.replace('_', ' ').title()} for pt in property_types],
             "states": states,
             "cities": cities,
+            "cities_by_state": cities_by_state_sorted,
             "furnishing_statuses": furnishing_statuses,
             "facing_directions": facing_directions,
             "commercial_subtypes": commercial_subtypes,
