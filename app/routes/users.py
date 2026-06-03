@@ -1,12 +1,77 @@
-from fastapi import APIRouter, HTTPException, Request, Depends
-from ..models.schemas import UpdateProfileRequest, BankDetailsRequest
+from fastapi import APIRouter, HTTPException, Request, Response
+from ..models.schemas import UpdateProfileRequest, BankDetailsRequest, DeleteAccountRequest
 from ..core.security import get_current_user_claims
+from ..core.crypto import verify_password, hash_refresh_token
+from ..services.account_deletion_service import delete_user_account
 from ..services.otp_service import verify_otp_simple
 from ..db.supabase_client import db
 import datetime as dt
 import uuid
 
 router = APIRouter()
+
+@router.delete("/account")
+async def delete_own_account(
+    payload: DeleteAccountRequest,
+    request: Request,
+    response: Response,
+):
+    """Authenticated user deletes their own account (password + DELETE confirmation required)."""
+    try:
+        claims = get_current_user_claims(request)
+        if not claims:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        user_id = claims.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        if (payload.confirmation or "").strip().upper() != "DELETE":
+            raise HTTPException(
+                status_code=400,
+                detail='Type DELETE in the confirmation field to proceed',
+            )
+
+        users = await db.select("users", filters={"id": user_id})
+        if not users:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        user = users[0]
+        user_type = (user.get("user_type") or "").lower()
+        if user_type == "admin":
+            raise HTTPException(
+                status_code=403,
+                detail="Admin accounts cannot be deleted from the app. Contact support.",
+            )
+
+        password_hash = user.get("password_hash")
+        if not password_hash or not verify_password(payload.password, password_hash):
+            raise HTTPException(status_code=400, detail="Invalid password")
+
+        await delete_user_account(user_id)
+
+        response.delete_cookie("refresh_token", path="/api")
+        refresh_token = request.cookies.get("refresh_token")
+        if refresh_token:
+            try:
+                refresh_hash = hash_refresh_token(refresh_token)
+                tokens = await db.select(
+                    "refresh_tokens", filters={"token_hash": refresh_hash}, limit=20
+                )
+                for token_row in tokens or []:
+                    if token_row.get("id"):
+                        await db.delete("refresh_tokens", {"id": token_row["id"]})
+            except Exception as token_err:
+                print(f"[USERS] Refresh token cleanup on delete: {token_err}")
+
+        return {"success": True, "message": "Your account has been permanently deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[USERS] Delete account error: {e}")
+        import traceback
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail="Failed to delete account. Please try again.")
 
 @router.get("/me")
 async def get_user_profile(request: Request):

@@ -63,6 +63,10 @@ class ChangePasswordRequest(BaseModel):
     otp: str
     phone: str
 
+class DeleteAccountRequest(BaseModel):
+    password: str
+    confirmation: str = "DELETE"
+
 class UpdateProfileRequest(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
